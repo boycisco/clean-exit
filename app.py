@@ -106,8 +106,10 @@ def create_app() -> FastAPI:
     errors.install(application)
 
     from agents import router as agents_router
+    from authority import router as authority_router
 
     application.include_router(agents_router, prefix="/api/v1")
+    application.include_router(authority_router, prefix="/api/v1")
 
     @application.get("/health", response_model=Health, tags=["meta"])
     async def health() -> Health:

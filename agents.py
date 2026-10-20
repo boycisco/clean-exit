@@ -5,17 +5,14 @@ from sqlalchemy import desc, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from auth import require_agent_owner, require_owner
-from authority import build_graph
 from database import get_session
 from models import Agent as AgentModel
-from models import Authority as AuthorityModel
 from models import Owner
 from schemas import (
     AgentCreate,
     AgentRead,
     AgentStatus,
     AgentUpdate,
-    AuthorityGraph,
 )
 
 
@@ -60,9 +57,7 @@ async def list_agents(
 
 
 @router.get("/{agent_id}", response_model=AgentRead)
-async def get_agent(
-    agent: AgentModel = Depends(require_agent_owner),
-) -> AgentRead:
+async def get_agent(agent: AgentModel = Depends(require_agent_owner)) -> AgentRead:
     return AgentRead.model_validate(agent)
 
 
@@ -80,20 +75,3 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     return AgentRead.model_validate(agent)
-
-
-@router.get("/{agent_id}/authorities", response_model=AuthorityGraph)
-async def agent_authorities(
-    agent: AgentModel = Depends(require_agent_owner),
-    session: AsyncSession = Depends(get_session),
-) -> AuthorityGraph:
-    rows = (
-        (
-            await session.execute(
-                select(AuthorityModel).where(AuthorityModel.agent_id == agent.id)
-            )
-        )
-        .scalars()
-        .all()
-    )
-    return build_graph(agent.id, list(rows))

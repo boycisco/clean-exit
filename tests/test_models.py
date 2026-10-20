@@ -1,25 +1,10 @@
 from __future__ import annotations
 
 import pytest
-from sqlalchemy.ext.asyncio import (
-    AsyncSession,
-    async_sessionmaker,
-    create_async_engine,
-)
+from sqlalchemy.exc import IntegrityError
+from sqlalchemy.ext.asyncio import AsyncSession
 
-from database import Base
-from models import Agent, Authority, Owner
-
-
-@pytest.fixture
-async def session():
-    engine = create_async_engine("sqlite+aiosqlite:///:memory:")
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    factory = async_sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
-    async with factory() as s:
-        yield s
-    await engine.dispose()
+from models import Agent, Authority, Owner, TerminationJob
 
 
 async def test_create_agent_with_authority(session: AsyncSession):
@@ -32,8 +17,7 @@ async def test_create_agent_with_authority(session: AsyncSession):
     session.add(agent)
     await session.commit()
     await session.refresh(agent)
-
-    assert agent.status == "active"  # never 'clean' by default
+    assert agent.status == "active"
 
     auth = Authority(
         agent_id=agent.id,
@@ -45,7 +29,6 @@ async def test_create_agent_with_authority(session: AsyncSession):
     session.add(auth)
     await session.commit()
     await session.refresh(auth)
-
     assert auth.id
     assert auth.agent_id == agent.id
 
@@ -75,14 +58,10 @@ async def test_authority_graph_roundtrip(session: AsyncSession):
     session.add(child)
     await session.commit()
     await session.refresh(child)
-
     assert child.parent_id == parent.id
 
 
 async def test_idempotency_key_unique_per_agent(session: AsyncSession):
-    from models import TerminationJob
-    from sqlalchemy.exc import IntegrityError
-
     owner = Owner(name="carol", token_hash="hash-c")
     session.add(owner)
     await session.commit()

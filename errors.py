@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.exceptions import HTTPException as StarletteHTTPException
@@ -48,6 +48,31 @@ def _envelope(
     return body
 
 
+_PRIMITIVES = (str, int, float, bool, type(None))
+
+
+def _safe_errors(errors: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Make Pydantic v2 validation errors JSON-serializable.
+
+    Pydantic v2 attaches the original exception instance under
+    ctx.error for value_error cases. json.dumps cannot serialize a
+    live exception, so we convert every non-primitive ctx value to
+    its string form. The 'msg' field already carries the human
+    message, so no information is lost.
+    """
+    safe: list[dict[str, Any]] = []
+    for err in errors:
+        item = {k: v for k, v in err.items() if k != "ctx"}
+        ctx = err.get("ctx")
+        if isinstance(ctx, dict):
+            item["ctx"] = {
+                k: v if isinstance(v, _PRIMITIVES) else str(v)
+                for k, v in ctx.items()
+            }
+        safe.append(item)
+    return safe
+
+
 def install(app: FastAPI) -> None:
     """Register all exception handlers on the given FastAPI app."""
 
@@ -63,11 +88,11 @@ def install(app: FastAPI) -> None:
     async def _validation(request: Request, exc: RequestValidationError) -> JSONResponse:
         rid = getattr(request.state, "request_id", None)
         return JSONResponse(
-            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            status_code=422,
             content=_envelope(
                 "validation_error",
                 "Request validation failed.",
-                {"errors": exc.errors()},
+                {"errors": _safe_errors(exc.errors())},
                 rid,
             ),
         )
@@ -85,8 +110,7 @@ def install(app: FastAPI) -> None:
     async def _unhandled(request: Request, exc: Exception) -> JSONResponse:
         rid = getattr(request.state, "request_id", None)
         log.exception("Unhandled error", extra={"request_id": rid})
-        # Never leak exception messages from unknown failures.
         return JSONResponse(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            status_code=500,
             content=_envelope("internal_error", "An unexpected error occurred.", {}, rid),
         )

@@ -69,25 +69,45 @@ class Signer:
         except ValueError as e:
             raise SignerInvalid("signer file is not valid JSON") from e
 
-        account_id = data.get("account_id")
-        secret = data.get("secret_key")
-        if not isinstance(account_id, str) or not account_id:
-            raise SignerInvalid("signer file missing 'account_id'")
+        # Account ID: accept either the classic 'account_id' field
+        # (older near-cli / hand-written files) OR fall back to
+        # 'expected_account' when the file only carries an
+        # 'implicit_account_id' field (near-cli-rs 0.31+).
+        file_account = data.get("account_id")
+        if not isinstance(file_account, str) or not file_account:
+            file_account = None
+
+        if file_account is not None and expected_account is not None:
+            if file_account != expected_account:
+                raise SignerInvalid(
+                    f"signer file account_id ({file_account}) does not match "
+                    f"configured account ({expected_account})"
+                )
+        account_id = file_account or expected_account
+        if not account_id:
+            raise SignerInvalid(
+                "signer file has no account_id and no expected_account was provided"
+            )
+
+        # Secret key: accept 'secret_key' (classic) OR 'private_key'
+        # (near-cli-rs 0.31+).
+        secret = data.get("secret_key") or data.get("private_key")
         if not isinstance(secret, str) or not secret.startswith("ed25519:"):
-            raise SignerInvalid("signer 'secret_key' must start with 'ed25519:'")
+            raise SignerInvalid("signer 'secret_key'/'private_key' must start with 'ed25519:'")
 
         try:
             secret_bytes = base58.b58decode(secret[len("ed25519:"):])
         except ValueError as e:
-            raise SignerInvalid("signer 'secret_key' is not valid base58") from e
+            raise SignerInvalid("signer key is not valid base58") from e
 
         if len(secret_bytes) == 64:
-            seed = secret_bytes[:32]  # NEAR key files: seed || pubkey
+            seed = secret_bytes[:32]
         elif len(secret_bytes) == 32:
             seed = secret_bytes
         else:
             raise SignerInvalid(
-                f"invalid ed25519 secret length: {len(secret_bytes)} (expected 32 or 64)"
+                f"invalid ed25519 secret length: {len(secret_bytes)} "
+                "(expected 32 or 64)"
             )
 
         try:
@@ -95,11 +115,19 @@ class Signer:
         except Exception as e:
             raise SignerInvalid("invalid ed25519 private key") from e
 
-        if expected_account and account_id != expected_account:
-            raise SignerInvalid(
-                f"signer file account_id ({account_id}) does not match configured "
-                f"account ({expected_account})"
+        # Integrity check: if the file declares a public_key, verify it
+        # matches what we derived. Catches truncated or swapped files.
+        declared_pub = data.get("public_key")
+        if isinstance(declared_pub, str) and declared_pub.startswith("ed25519:"):
+            derived_pub_bytes = private_key.public_key().public_bytes(
+                Encoding.Raw, PublicFormat.Raw
             )
+            derived_pub = "ed25519:" + base58.b58encode(derived_pub_bytes).decode()
+            if declared_pub != derived_pub:
+                raise SignerInvalid(
+                    "signer file public_key does not match derived public key "
+                    "(file may be corrupted or keys swapped)"
+                )
 
         return cls(account_id, private_key)
 

@@ -149,11 +149,12 @@ def _signer_from_rfc_seed(tmp_path) -> Signer:
     pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     expanded = seed + pub
     secret_b58 = "ed25519:" + b58.b58encode(expanded).decode()
+    pubkey_b58 = "ed25519:" + b58.b58encode(pub).decode()
 
     p = tmp_path / "key.json"
     p.write_text(
         f'{{"account_id": "alice.testnet", '
-        f'"public_key": "ed25519:PLACEHOLDER", "secret_key": "{secret_b58}"}}'
+        f'"public_key": "{pubkey_b58}", "secret_key": "{secret_b58}"}}'
     )
     return Signer.from_file(str(p))
 

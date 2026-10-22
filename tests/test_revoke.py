@@ -170,9 +170,11 @@ def _write_signer(tmp_path, account_id: str) -> Signer:
     priv = Ed25519PrivateKey.from_private_bytes(seed)
     pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
     secret_b58 = "ed25519:" + base58.b58encode(seed + pub).decode()
+    pubkey_b58 = "ed25519:" + base58.b58encode(pub).decode()
+
     p = tmp_path / "signer.json"
     p.write_text(
-        f'{{"account_id": "{account_id}", "public_key": "ed25519:placeholder", '
+        f'{{"account_id": "{account_id}", "public_key": "{pubkey_b58}", '
         f'"secret_key": "{secret_b58}"}}'
     )
     return Signer.from_file(str(p))

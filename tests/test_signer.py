@@ -29,10 +29,18 @@ def _ed25519_secret_b58(seed_hex: str, *, expanded: bool) -> str:
     return "ed25519:" + base58.b58encode(raw).decode()
 
 
-def _write_key(tmp_path, account: str, secret: str) -> str:
+def _write_key(tmp_path, account: str, secret: str, public_key: str | None = None) -> str:
+    """Write a signer file. If public_key isn't given, derive it from the secret."""
+    if public_key is None:
+        raw = base58.b58decode(secret[len("ed25519:"):])
+        seed = raw[:32]
+        priv = Ed25519PrivateKey.from_private_bytes(seed)
+        pub_bytes = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+        public_key = "ed25519:" + base58.b58encode(pub_bytes).decode()
+
     p = tmp_path / "key.json"
     p.write_text(
-        f'{{"account_id": "{account}", "public_key": "ed25519:PLACEHOLDER", '
+        f'{{"account_id": "{account}", "public_key": "{public_key}", '
         f'"secret_key": "{secret}"}}'
     )
     return str(p)
@@ -116,3 +124,69 @@ def test_account_mismatch_raises_invalid(tmp_path):
     path = _write_key(tmp_path, "alice.testnet", _ed25519_secret_b58(RFC_SEED_HEX, expanded=True))
     with pytest.raises(SignerInvalid):
         Signer.from_file(path, expected_account="bob.testnet")
+
+
+def test_load_near_cli_031_format(tmp_path):
+    """near-cli-rs 0.31 uses implicit_account_id + private_key + master_seed_phrase."""
+    seed = bytes.fromhex(RFC_SEED_HEX)
+    priv = Ed25519PrivateKey.from_private_bytes(seed)
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    secret_b58 = "ed25519:" + base58.b58encode(seed + pub).decode()
+    pubkey = "ed25519:" + base58.b58encode(pub).decode()
+
+    p = tmp_path / "key.json"
+    p.write_text(
+        '{'
+        '"implicit_account_id": "",'
+        '"master_seed_phrase": "abandon abandon abandon abandon abandon abandon '
+        'abandon abandon abandon abandon abandon about",'
+        f'"private_key": "{secret_b58}",'
+        f'"public_key": "{pubkey}",'
+        '"seed_phrase_hd_path": "m/44\'/397\'/0\'"'
+        '}'
+    )
+
+    s = Signer.from_file(str(p), expected_account="alice.testnet")
+    assert s.account_id == "alice.testnet"
+    assert s.public_key == pubkey
+
+
+def test_load_near_cli_031_format_without_expected_account_fails(tmp_path):
+    seed = bytes.fromhex(RFC_SEED_HEX)
+    priv = Ed25519PrivateKey.from_private_bytes(seed)
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    secret_b58 = "ed25519:" + base58.b58encode(seed + pub).decode()
+    pubkey = "ed25519:" + base58.b58encode(pub).decode()
+
+    p = tmp_path / "key.json"
+    p.write_text(
+        '{'
+        '"implicit_account_id": "",'
+        f'"private_key": "{secret_b58}",'
+        f'"public_key": "{pubkey}"'
+        '}'
+    )
+
+    with pytest.raises(SignerInvalid):
+        Signer.from_file(str(p))
+
+
+def test_load_rejects_corrupted_public_key(tmp_path):
+    """If declared public_key does not match derived, refuse to load."""
+    seed = bytes.fromhex(RFC_SEED_HEX)
+    priv = Ed25519PrivateKey.from_private_bytes(seed)
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    secret_b58 = "ed25519:" + base58.b58encode(seed + pub).decode()
+
+    p = tmp_path / "key.json"
+    p.write_text(
+        '{'
+        '"account_id": "alice.testnet",'
+        f'"secret_key": "{secret_b58}",'
+        '"public_key": "ed25519:AAAABBBBCCCCDDDDEEEEFFFFGGGGHHHHIIIIJJJJKKKKLLLLMMMMNNNN"'
+        '}'
+    )
+
+    with pytest.raises(SignerInvalid) as exc:
+        Signer.from_file(str(p))
+    assert "does not match derived public key" in str(exc.value)

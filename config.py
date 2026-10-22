@@ -71,10 +71,21 @@ class Settings(BaseSettings):
         return Path(self.receipt_publisher_key_path).exists()
 
     def signing_allowed(self) -> tuple[bool, str]:
-        if not self.signer_configured:
+        if not self.near_signer_account or not self.near_signer_key_path:
+            return False, "signer_unavailable"
+        if not Path(self.near_signer_key_path).exists():
             return False, "signer_unavailable"
         if self.is_mainnet and not self.is_production:
             return False, "mainnet_signing_forbidden_in_non_production"
+        try:
+            from signer import Signer
+
+            Signer.from_file(
+                self.near_signer_key_path,
+                expected_account=self.near_signer_account,
+            )
+        except Exception:
+            return False, "signer_invalid"
         return True, "ok"
 
 

@@ -117,3 +117,136 @@ async def test_get_access_keys_empty():
     rpc = _rpc(_rpc_handler({"jsonrpc": "2.0", "id": "clean", "result": {"keys": []}}))
     keys = await rpc.get_access_keys("alice.testnet")
     assert keys == []
+
+
+# ---------------------------------------------------------------------------
+# Borsh / transaction construction tests
+# ---------------------------------------------------------------------------
+
+import hashlib
+import base64 as b64
+import base58 as b58
+
+from near import (
+    _action_delete_key,
+    _borsh_string,
+    _borsh_u32,
+    _borsh_u64,
+    _pubkey_bytes,
+    _serialize_transaction,
+    build_delete_key_transaction,
+)
+from signer import Signer
+
+
+def _signer_from_rfc_seed(tmp_path) -> Signer:
+    seed_hex = "9d61b19deffd5a60ba844af492ec2cc44449c5697b326919703bac031cae7f60"
+    seed = bytes.fromhex(seed_hex)
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+    from cryptography.hazmat.primitives.serialization import Encoding, PublicFormat
+
+    priv = Ed25519PrivateKey.from_private_bytes(seed)
+    pub = priv.public_key().public_bytes(Encoding.Raw, PublicFormat.Raw)
+    expanded = seed + pub
+    secret_b58 = "ed25519:" + b58.b58encode(expanded).decode()
+
+    p = tmp_path / "key.json"
+    p.write_text(
+        f'{{"account_id": "alice.testnet", '
+        f'"public_key": "ed25519:PLACEHOLDER", "secret_key": "{secret_b58}"}}'
+    )
+    return Signer.from_file(str(p))
+
+
+def test_borsh_u32():
+    assert _borsh_u32(0) == b"\x00\x00\x00\x00"
+    assert _borsh_u32(1) == b"\x01\x00\x00\x00"
+    assert _borsh_u32(256) == b"\x00\x01\x00\x00"
+
+
+def test_borsh_u64():
+    assert _borsh_u64(0) == b"\x00" * 8
+    assert _borsh_u64(1) == b"\x01" + b"\x00" * 7
+
+
+def test_borsh_string():
+    assert _borsh_string("") == b"\x00\x00\x00\x00"
+    assert _borsh_string("a") == b"\x01\x00\x00\x00" + b"a"
+    assert _borsh_string("ab") == b"\x02\x00\x00\x00" + b"ab"
+
+
+def test_pubkey_bytes():
+    raw = b"\x01" * 32
+    encoded = "ed25519:" + b58.b58encode(raw).decode()
+    assert _pubkey_bytes(encoded) == b"\x00" + raw
+
+
+def test_pubkey_bytes_rejects_non_ed25519():
+    with pytest.raises(ValueError):
+        _pubkey_bytes("secp256k1:abc")
+
+
+def test_action_delete_key_shape():
+    raw = b"\x02" * 32
+    encoded = "ed25519:" + b58.b58encode(raw).decode()
+    action = _action_delete_key(encoded)
+    assert action[0] == 0x06  # DeleteKey variant
+    assert len(action) == 1 + 1 + 32  # variant + key type + key
+
+
+def test_transaction_serialization_length():
+    raw_pk = b"\x03" * 32
+    signer_pub = "ed25519:" + b58.b58encode(raw_pk).decode()
+    target_pub = "ed25519:" + b58.b58encode(b"\x04" * 32).decode()
+
+    unsigned = _serialize_transaction(
+        signer_id="alice.testnet",
+        signer_public_key=signer_pub,
+        nonce=42,
+        receiver_id="alice.testnet",
+        block_hash=b"\x00" * 32,
+        actions=[_action_delete_key(target_pub)],
+    )
+    # Sanity: must start with the signer_id string.
+    assert unsigned.startswith(_borsh_string("alice.testnet"))
+    # Nonce appears at a known offset after strings and pubkey.
+    nonce_offset = (
+        len(_borsh_string("alice.testnet"))
+        + len(_pubkey_bytes(signer_pub))
+    )
+    assert unsigned[nonce_offset : nonce_offset + 8] == _borsh_u64(42)
+
+
+def test_build_delete_key_transaction_roundtrip(tmp_path):
+    signer = _signer_from_rfc_seed(tmp_path)
+    target_pub = "ed25519:" + b58.b58encode(b"\x05" * 32).decode()
+    block_hash = b"\xAA" * 32
+    nonce = 12345
+
+    signed_b64 = build_delete_key_transaction(
+        signer=signer,
+        target_public_key=target_pub,
+        nonce=nonce,
+        block_hash=block_hash,
+    )
+    signed = b64.b64decode(signed_b64)
+
+    # The signature is the last 64 bytes.
+    unsigned, signature = signed[:-64], signed[-64:]
+    assert len(signature) == 64
+
+    # The signature is over sha256(unsigned_tx).
+    tx_hash = hashlib.sha256(unsigned).digest()
+    assert signer.verify(tx_hash, signature) is True
+
+
+def test_build_delete_key_transaction_rejects_wrong_block_hash(tmp_path):
+    signer = _signer_from_rfc_seed(tmp_path)
+    target_pub = "ed25519:" + b58.b58encode(b"\x06" * 32).decode()
+    with pytest.raises(ValueError):
+        build_delete_key_transaction(
+            signer=signer,
+            target_public_key=target_pub,
+            nonce=1,
+            block_hash=b"\x00" * 31,  # too short
+        )

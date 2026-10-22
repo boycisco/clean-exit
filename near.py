@@ -1,10 +1,18 @@
 from __future__ import annotations
 
-from typing import Any
+from typing import Any, TYPE_CHECKING
 
 import httpx
 
 from config import get_settings
+
+import base64
+import hashlib
+
+import base58
+
+if TYPE_CHECKING:
+    from signer import Signer
 
 
 class NearError(Exception):
@@ -141,6 +149,111 @@ class NearRpc:
             },
         )
         return result.get("keys", [])
+
+
+# ---------------------------------------------------------------------------
+# Borsh serialization for NEAR transactions
+# ---------------------------------------------------------------------------
+# NEAR transactions are Borsh-serialized. Reference:
+#   https://nomicon.io/RuntimeSpec/Transactions
+#
+# Field encodings used here:
+#   u32        -> 4 bytes little-endian
+#   u64        -> 8 bytes little-endian
+#   string     -> u32 length prefix + UTF-8 bytes
+#   Vec<T>     -> u32 count + concatenated elements
+#   PublicKey  -> 1 byte key type (0 = Ed25519) + 32 bytes
+#   Signature  -> 64 bytes
+#   Action     -> u8 variant id + payload
+
+
+def _borsh_u32(n: int) -> bytes:
+    return n.to_bytes(4, "little")
+
+
+def _borsh_u64(n: int) -> bytes:
+    return n.to_bytes(8, "little")
+
+
+def _borsh_string(s: str) -> bytes:
+    encoded = s.encode("utf-8")
+    return _borsh_u32(len(encoded)) + encoded
+
+
+def _pubkey_bytes(pubkey: str) -> bytes:
+    if not pubkey.startswith("ed25519:"):
+        raise ValueError(f"unsupported key type in {pubkey!r}")
+    raw = base58.b58decode(pubkey[len("ed25519:"):])
+    if len(raw) != 32:
+        raise ValueError(f"ed25519 public key must be 32 bytes, got {len(raw)}")
+    return b"\x00" + raw
+
+
+def _action_delete_key(target_pubkey: str) -> bytes:
+    # NEAR Action enum: CreateAccount=0, DeployContract=1, FunctionCall=2,
+    # Transfer=3, Stake=4, AddKey=5, DeleteKey=6, DeleteAccount=7
+    return b"\x06" + _pubkey_bytes(target_pubkey)
+
+
+def _serialize_transaction(
+    signer_id: str,
+    signer_public_key: str,
+    nonce: int,
+    receiver_id: str,
+    block_hash: bytes,
+    actions: list[bytes],
+) -> bytes:
+    """Borsh-serialize the unsigned Transaction struct."""
+    if len(block_hash) != 32:
+        raise ValueError(f"block_hash must be 32 bytes, got {len(block_hash)}")
+    return b"".join(
+        [
+            _borsh_string(signer_id),
+            _pubkey_bytes(signer_public_key),
+            _borsh_u64(nonce),
+            _borsh_string(receiver_id),
+            block_hash,
+            _borsh_u32(len(actions)),
+            *actions,
+        ]
+    )
+
+
+def _serialize_signed(unsigned: bytes, signature: bytes) -> bytes:
+    """SignedTransaction = Transaction || Signature(64)."""
+    if len(signature) != 64:
+        raise ValueError(f"signature must be 64 bytes, got {len(signature)}")
+    return unsigned + signature
+
+
+def build_delete_key_transaction(
+    signer: "Signer",
+    target_public_key: str,
+    nonce: int,
+    block_hash: bytes,
+    receiver_id: str | None = None,
+) -> str:
+    """Build and sign a DeleteKey transaction; return base64-encoded bytes.
+
+    The receiver_id defaults to the signer's own account — an access-key
+    mutation targets the account that owns the key.
+    """
+    receiver = receiver_id or signer.account_id
+
+    unsigned = _serialize_transaction(
+        signer_id=signer.account_id,
+        signer_public_key=signer.public_key,
+        nonce=nonce,
+        receiver_id=receiver,
+        block_hash=block_hash,
+        actions=[_action_delete_key(target_public_key)],
+    )
+
+    tx_hash = hashlib.sha256(unsigned).digest()
+    signature = signer.sign(tx_hash)
+
+    signed = _serialize_signed(unsigned, signature)
+    return base64.b64encode(signed).decode("ascii")
 
 
 def get_rpc() -> NearRpc:

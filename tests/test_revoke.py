@@ -379,3 +379,22 @@ async def test_revoke_pre_check_rpc_fails(setup):
     )
     assert r.status_code == 502
     assert r.json()["error"]["code"] == "rpc_unavailable"
+
+
+async def test_revoke_refuses_signer_own_key(setup, session):
+    """Revoking the key the signer is using must be blocked."""
+    c = setup
+    # Point the authority at the signer's own public key.
+    c.authority.resource = c.signer.public_key
+    # Ensure it is in the mock chain's key set.
+    c.chain.keys[c.signer.public_key] = {"permission": "FullAccess"}
+    await session.commit()
+
+    r = await c.post(
+        f"/api/v1/agents/{c.agent.id}/authorities/{c.authority.id}/revoke",
+        headers=_h(c.owner_token),
+    )
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "self_revocation_refused"
+    # Key must still be on chain — nothing was deleted.
+    assert c.signer.public_key in c.chain.keys

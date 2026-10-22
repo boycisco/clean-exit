@@ -469,6 +469,14 @@ async def revoke_authority(
             status_code=422,
         )
 
+    if signer.account_id == agent.near_account and signer.public_key == authority.resource:
+        raise ApiError(
+            "self_revocation_refused",
+            "refusing to revoke the signer's own access key "
+            "(this would lock the account)",
+            status_code=409,
+        )
+
     # ---- Pre-check: is the key actually on chain? ----
     try:
         observed = await rpc.get_access_keys(agent.near_account)

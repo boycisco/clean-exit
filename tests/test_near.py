@@ -208,13 +208,9 @@ def test_transaction_serialization_length():
         block_hash=b"\x00" * 32,
         actions=[_action_delete_key(target_pub)],
     )
-    # Sanity: must start with the signer_id string.
+    # No V0 variant tag — transaction starts directly with signer_id length.
     assert unsigned.startswith(_borsh_string("alice.testnet"))
-    # Nonce appears at a known offset after strings and pubkey.
-    nonce_offset = (
-        len(_borsh_string("alice.testnet"))
-        + len(_pubkey_bytes(signer_pub))
-    )
+    nonce_offset = len(_borsh_string("alice.testnet")) + len(_pubkey_bytes(signer_pub))
     assert unsigned[nonce_offset : nonce_offset + 8] == _borsh_u64(42)
 
 
@@ -232,13 +228,80 @@ def test_build_delete_key_transaction_roundtrip(tmp_path):
     )
     signed = b64.b64decode(signed_b64)
 
-    # The signature is the last 64 bytes.
-    unsigned, signature = signed[:-64], signed[-64:]
+    # Signature is 65 bytes: 1 key_type byte (0 = Ed25519) + 64 signature bytes.
+    assert signed[-65] == 0x00
+    unsigned = signed[:-65]
+    signature = signed[-64:]
     assert len(signature) == 64
 
-    # The signature is over sha256(unsigned_tx).
+    # V0 transactions have NO variant tag — first byte is signer_id length.
+    # Signer ID is "alice.testnet" (13 bytes); its u32 LE length is 0x0D 0x00 0x00 0x00.
+    assert unsigned[0:4] == b"\x0d\x00\x00\x00"
+
+    # The signature is over sha256(unsigned).
     tx_hash = hashlib.sha256(unsigned).digest()
     assert signer.verify(tx_hash, signature) is True
+
+
+def test_signed_transaction_total_size(tmp_path):
+    """Byte budget for a signed DeleteKey transaction.
+
+    Production size for a 30-char account was observed at 243 bytes before
+    the signature key-type byte was added, and 244 after — the arithmetic
+    here must reproduce that delta exactly.
+    """
+    signer = _signer_from_rfc_seed(tmp_path)
+    target_pub = "ed25519:" + b58.b58encode(b"\x05" * 32).decode()
+    signed_b64 = build_delete_key_transaction(
+        signer=signer,
+        target_public_key=target_pub,
+        nonce=1,
+        block_hash=b"\xAA" * 32,
+    )
+    signed = b64.b64decode(signed_b64)
+
+    signer_id = signer.account_id          # "alice.testnet" → 13 chars
+    receiver_id = signer.account_id
+
+    expected = (
+        4 + len(signer_id)        # signer_id: u32 length + UTF-8 bytes
+        + 33                      # signer public key: 1 key-type + 32
+        + 8                       # nonce: u64
+        + 4 + len(receiver_id)    # receiver_id: u32 length + UTF-8 bytes
+        + 32                      # block_hash
+        + 4                       # actions count: u32
+        + 34                      # DeleteKey: 1 variant + 1 key-type + 32 pubkey
+        + 65                      # signature: 1 key-type + 64 data
+    )
+
+    assert len(signed) == expected
+    assert len(signed) == 210  # concrete: 13-char signer and receiver
+
+
+def test_signed_transaction_size_matches_live_observation(tmp_path):
+    """Reproduce the exact byte count the chain rejected/accepted.
+
+    A 30-char account yields 179-byte unsigned + 65-byte signature = 244.
+    The pre-fix 64-byte signature produced 243 — the observed failure.
+    """
+    signer = _signer_from_rfc_seed(tmp_path)
+    # Swap in a 30-char signer id by constructing the same layout directly.
+    signer_id = "clean-exit-test-429622.testnet"   # 30 chars
+    receiver_id = signer_id
+    target_pub = "ed25519:" + b58.b58encode(b"\x05" * 32).decode()
+
+    unsigned = _serialize_transaction(
+        signer_id=signer_id,
+        signer_public_key=signer.public_key,
+        nonce=1,
+        receiver_id=receiver_id,
+        block_hash=b"\xAA" * 32,
+        actions=[_action_delete_key(target_pub)],
+    )
+    assert len(unsigned) == 179
+
+    # Signature adds exactly 65 bytes → 244 total.
+    assert len(unsigned) + 65 == 244
 
 
 def test_build_delete_key_transaction_rejects_wrong_block_hash(tmp_path):

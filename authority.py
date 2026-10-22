@@ -565,6 +565,11 @@ async def revoke_authority(
             "rpc_unavailable",
             f"broadcast failed: {e.message}",
             status_code=502,
+            details={
+                "near_error_code": getattr(e, "code", None),
+                "near_detail": getattr(e, "detail", None),
+                "signed_tx_len_bytes": len(signed_b64) * 3 // 4,
+            },
         ) from e
 
     if not broadcast["success"]:

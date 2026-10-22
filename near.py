@@ -241,7 +241,8 @@ def _serialize_transaction(
 def _serialize_signed(unsigned: bytes, signature: bytes) -> bytes:
     if len(signature) != 64:
         raise ValueError(f"signature must be 64 bytes, got {len(signature)}")
-    return unsigned + signature
+    # Signature is a Borsh enum: 1-byte variant tag (0 = Ed25519) + 64-byte signature.
+    return unsigned + b"\x00" + signature
 
 
 def build_delete_key_transaction(

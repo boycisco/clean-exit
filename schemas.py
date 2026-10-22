@@ -350,6 +350,23 @@ class VerifyReport(BaseModel):
     error: str | None = None
 
 
+class RevokeOutcome(StrEnum):
+    REVOKED = "revoked"
+    ALREADY_ABSENT = "already_absent"
+    SUBMITTED_BUT_FAILED = "submitted_but_failed"
+    REQUIRES_MANUAL_ACTION = "requires_manual_action"
+
+
+class RevokeReport(BaseModel):
+    authority_id: str
+    previous_state: AuthorityState
+    new_state: AuthorityState
+    outcome: RevokeOutcome
+    tx_hash: str | None = None
+    detail: str | None = None
+    verified_absent: bool | None = None
+
+
 class Capabilities(BaseModel):
     network: Environment
     signer_configured: bool

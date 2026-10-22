@@ -112,3 +112,28 @@ class Signer:
             return True
         except InvalidSignature:
             return False
+
+
+def require_signer():
+    """FastAPI dependency: return a loaded Signer, or raise ApiError 503.
+
+    The lazy imports avoid a circular dependency at module import time
+    (errors → signer → config → nothing).
+    """
+    from config import get_settings
+    from errors import ApiError
+
+    settings = get_settings()
+    allowed, reason = settings.signing_allowed()
+    if not allowed:
+        code = "signer_invalid" if "invalid" in reason else "signer_unavailable"
+        raise ApiError(
+            code,
+            f"signing unavailable: {reason}",
+            status_code=503,
+            details={"reason": reason},
+        )
+    return Signer.from_file(
+        settings.near_signer_key_path,
+        expected_account=settings.near_signer_account,
+    )

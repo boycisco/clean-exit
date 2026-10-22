@@ -1,15 +1,13 @@
 from __future__ import annotations
 
+import base64
+import hashlib
 from typing import Any, TYPE_CHECKING
 
+import base58
 import httpx
 
 from config import get_settings
-
-import base64
-import hashlib
-
-import base58
 
 if TYPE_CHECKING:
     from signer import Signer
@@ -80,11 +78,6 @@ class NearRpc:
         if "error" in data:
             err = data["error"]
 
-            # Locate an UNKNOWN_ACCOUNT cause across several possible
-            # response shapes from different nearcore versions:
-            #   - cause at the top level of error  (most common today)
-            #   - cause nested inside data (dict)
-            #   - data is a string with a "does not exist" message
             cause: dict[str, Any] | None = None
             if isinstance(err.get("cause"), dict):
                 cause = err["cause"]
@@ -104,7 +97,6 @@ class NearRpc:
                     detail={"account_id": account_id},
                 )
 
-            # Fallback: string data carries the not-found signal
             data_str = err.get("data")
             if isinstance(data_str, str) and (
                 "does not exist while viewing" in data_str
@@ -150,21 +142,51 @@ class NearRpc:
         )
         return result.get("keys", [])
 
+    async def get_access_key(
+        self, account_id: str, public_key: str
+    ) -> dict[str, Any]:
+        """Fetch a single access key by account + public key."""
+        return await self._call(
+            "query",
+            {
+                "request_type": "view_access_key",
+                "finality": "final",
+                "account_id": account_id,
+                "public_key": public_key,
+            },
+        )
+
+    async def get_latest_block_hash(self) -> bytes:
+        result = await self._call("block", {"finality": "final"})
+        hash_b58 = (result.get("header") or {}).get("hash")
+        if not hash_b58:
+            raise NearRpcUnavailable("block response missing header.hash")
+        return base58.b58decode(hash_b58)
+
+    async def broadcast_tx_commit(self, signed_tx_b64: str) -> dict[str, Any]:
+        """Submit a base64-encoded signed tx and wait for commit.
+
+        Returns dict with keys: success (bool), tx_hash (str), failure (Any | None).
+        Raises NearError only if the RPC rejects the request — i.e. the
+        transaction was never submitted.
+        """
+        result = await self._call("broadcast_tx_commit", [signed_tx_b64])
+        tx_hash = (result.get("transaction") or {}).get("hash") or ""
+        status_obj = result.get("status") or {}
+        if "SuccessValue" in status_obj or "SuccessReceiptId" in status_obj:
+            return {"success": True, "tx_hash": tx_hash, "failure": None}
+        return {
+            "success": False,
+            "tx_hash": tx_hash,
+            "failure": status_obj.get("Failure"),
+        }
+
 
 # ---------------------------------------------------------------------------
 # Borsh serialization for NEAR transactions
 # ---------------------------------------------------------------------------
 # NEAR transactions are Borsh-serialized. Reference:
 #   https://nomicon.io/RuntimeSpec/Transactions
-#
-# Field encodings used here:
-#   u32        -> 4 bytes little-endian
-#   u64        -> 8 bytes little-endian
-#   string     -> u32 length prefix + UTF-8 bytes
-#   Vec<T>     -> u32 count + concatenated elements
-#   PublicKey  -> 1 byte key type (0 = Ed25519) + 32 bytes
-#   Signature  -> 64 bytes
-#   Action     -> u8 variant id + payload
 
 
 def _borsh_u32(n: int) -> bytes:
@@ -190,8 +212,6 @@ def _pubkey_bytes(pubkey: str) -> bytes:
 
 
 def _action_delete_key(target_pubkey: str) -> bytes:
-    # NEAR Action enum: CreateAccount=0, DeployContract=1, FunctionCall=2,
-    # Transfer=3, Stake=4, AddKey=5, DeleteKey=6, DeleteAccount=7
     return b"\x06" + _pubkey_bytes(target_pubkey)
 
 
@@ -203,7 +223,6 @@ def _serialize_transaction(
     block_hash: bytes,
     actions: list[bytes],
 ) -> bytes:
-    """Borsh-serialize the unsigned Transaction struct."""
     if len(block_hash) != 32:
         raise ValueError(f"block_hash must be 32 bytes, got {len(block_hash)}")
     return b"".join(
@@ -220,7 +239,6 @@ def _serialize_transaction(
 
 
 def _serialize_signed(unsigned: bytes, signature: bytes) -> bytes:
-    """SignedTransaction = Transaction || Signature(64)."""
     if len(signature) != 64:
         raise ValueError(f"signature must be 64 bytes, got {len(signature)}")
     return unsigned + signature
@@ -233,13 +251,7 @@ def build_delete_key_transaction(
     block_hash: bytes,
     receiver_id: str | None = None,
 ) -> str:
-    """Build and sign a DeleteKey transaction; return base64-encoded bytes.
-
-    The receiver_id defaults to the signer's own account — an access-key
-    mutation targets the account that owns the key.
-    """
     receiver = receiver_id or signer.account_id
-
     unsigned = _serialize_transaction(
         signer_id=signer.account_id,
         signer_public_key=signer.public_key,
@@ -248,10 +260,8 @@ def build_delete_key_transaction(
         block_hash=block_hash,
         actions=[_action_delete_key(target_public_key)],
     )
-
     tx_hash = hashlib.sha256(unsigned).digest()
     signature = signer.sign(tx_hash)
-
     signed = _serialize_signed(unsigned, signature)
     return base64.b64encode(signed).decode("ascii")
 

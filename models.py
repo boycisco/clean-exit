@@ -110,6 +110,10 @@ class TerminationJob(Base):
     requested_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_now)
     started_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
     completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    locked_by: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    locked_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    next_attempt_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
 
     __table_args__ = (
         UniqueConstraint("agent_id", "idempotency_key", name="uq_job_agent_idem"),
@@ -159,4 +163,26 @@ class AuditEvent(Base):
     payload: Mapped[dict[str, Any]] = mapped_column(JSON, nullable=False, default=dict)
     created_at: Mapped[datetime] = mapped_column(
         UTCDateTime(), nullable=False, default=_now, index=True
+    )
+
+
+class TerminationAttempt(Base):
+    __tablename__ = "termination_attempts"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    job_id: Mapped[str] = mapped_column(
+        ForeignKey("termination_jobs.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    authority_id: Mapped[str | None] = mapped_column(
+        ForeignKey("authorities.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(32), nullable=False)
+    status: Mapped[str] = mapped_column(String(32), nullable=False, index=True)
+    tx_hash: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    error: Mapped[dict[str, Any] | None] = mapped_column(JSON, nullable=True)
+    started_at: Mapped[datetime] = mapped_column(UTCDateTime(), nullable=False, default=_now)
+    completed_at: Mapped[datetime | None] = mapped_column(UTCDateTime(), nullable=True)
+
+    __table_args__ = (
+        UniqueConstraint("job_id", "authority_id", name="uq_attempt_job_authority"),
     )

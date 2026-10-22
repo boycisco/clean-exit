@@ -367,6 +367,49 @@ class RevokeReport(BaseModel):
     verified_absent: bool | None = None
 
 
+class PlanStep(BaseModel):
+    order: int
+    authority_id: str
+    type: AuthorityType
+    resource: str
+    action: str  # revoke | registry_revoke | verify | manual | skip
+    support: str  # supported | unsupported | partial
+    required_authorization: str | None
+    depends_on: list[str] = Field(default_factory=list)
+    risk: str | None
+    verification: str
+
+
+class TerminationPlan(BaseModel):
+    agent_id: str
+    near_account: str | None
+    network: Environment
+    total_authorities: int
+    supported_count: int
+    unsupported_count: int
+    manual_count: int
+    steps: list[PlanStep]
+    notes: list[str] = Field(default_factory=list)
+
+
+class AttemptRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+    id: int
+    job_id: str
+    authority_id: str | None
+    action: str
+    status: str
+    tx_hash: str | None
+    error: dict[str, Any] | None
+    started_at: datetime
+    completed_at: datetime | None
+
+
+class TerminationRequest(BaseModel):
+    reason: str | None = Field(default=None, max_length=2048)
+    idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
+
+
 class Capabilities(BaseModel):
     network: Environment
     signer_configured: bool

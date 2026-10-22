@@ -329,6 +329,27 @@ class AuditEventRead(BaseModel):
 # Meta endpoints
 # ---------------------------------------------------------------------------
 
+class VerifiedAuthority(BaseModel):
+    authority_id: str
+    type: AuthorityType
+    resource: str
+    previous_state: AuthorityState
+    new_state: AuthorityState
+    on_chain: bool | None
+    detail: str | None = None
+
+
+class VerifyReport(BaseModel):
+    agent_id: str
+    near_account: str | None
+    checked_at: datetime
+    account_exists: bool
+    total_observed_keys: int
+    verified: list[VerifiedAuthority] = Field(default_factory=list)
+    skipped: list[VerifiedAuthority] = Field(default_factory=list)
+    error: str | None = None
+
+
 class Capabilities(BaseModel):
     network: Environment
     signer_configured: bool
@@ -338,6 +359,7 @@ class Capabilities(BaseModel):
     rate_limit_enabled: bool
     authority_types_registered: list[AuthorityType]
     authority_types_revocable: list[AuthorityType]
+    authority_types_verifiable: list[AuthorityType]
 
 
 class Health(BaseModel):

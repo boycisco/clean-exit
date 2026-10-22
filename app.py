@@ -146,6 +146,7 @@ def create_app() -> FastAPI:
                 AuthorityType.CHILD_DELEGATION,
             ],
             authority_types_revocable=revocable,
+            authority_types_verifiable=[AuthorityType.NEAR_FUNCTION_KEY],
         )
 
     return application

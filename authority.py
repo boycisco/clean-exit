@@ -15,8 +15,16 @@ from schemas import (
     AuthorityGraph,
     AuthorityNode,
     AuthorityRead,
+    AuthorityState,
+    AuthorityType,
     AuthorityUpdate,
+    VerifiedAuthority,
+    VerifyReport,
 )
+
+from datetime import datetime, timezone
+
+from near import NearAccountNotFound, NearError, NearRpc, get_rpc
 
 
 router = APIRouter(tags=["authorities"])
@@ -251,3 +259,148 @@ async def agent_authorities(
         .all()
     )
     return build_graph(agent.id, list(rows))
+
+
+@router.post(
+    "/agents/{agent_id}/verify",
+    response_model=VerifyReport,
+    tags=["authorities"],
+)
+async def verify_agent(
+    agent: AgentModel = Depends(require_agent_owner),
+    session: AsyncSession = Depends(get_session),
+    rpc: NearRpc = Depends(get_rpc),
+) -> VerifyReport:
+    """Read-only reconciliation of registered authorities vs on-chain state.
+
+    Does not sign, does not submit transactions, does not move funds.
+
+    A registered authority is only marked `expired` when we have an
+    authoritative key list AND the key is not present in it. If key
+    listing fails, the authority is `skipped` — we never claim absence
+    without evidence.
+    """
+    now = datetime.now(timezone.utc)
+    rows = (
+        (
+            await session.execute(
+                select(AuthorityModel).where(AuthorityModel.agent_id == agent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+
+    verified: list[VerifiedAuthority] = []
+    skipped: list[VerifiedAuthority] = []
+    account_exists = False
+    total_observed = 0
+    keys_observed = False
+    error_msg: str | None = None
+    on_chain_keys: set[str] = set()
+
+    if not agent.near_account:
+        error_msg = "agent has no near_account set"
+    else:
+        try:
+            await rpc.view_account(agent.near_account)
+            account_exists = True
+        except NearAccountNotFound:
+            error_msg = f"account '{agent.near_account}' not found on chain"
+        except NearError as e:
+            error_msg = f"{e.code}: {e.message}"
+
+        if account_exists:
+            try:
+                observed = await rpc.get_access_keys(agent.near_account)
+                total_observed = len(observed)
+                on_chain_keys = {k.get("public_key", "") for k in observed}
+                keys_observed = True
+            except NearError as e:
+                # Cannot claim absence without an authoritative list.
+                error_msg = f"access key list failed: {e.code}: {e.message}"
+
+    for a in rows:
+        a_type = AuthorityType(a.type)
+        a_state = AuthorityState(a.state)
+
+        if a_type != AuthorityType.NEAR_FUNCTION_KEY:
+            skipped.append(
+                VerifiedAuthority(
+                    authority_id=a.id,
+                    type=a_type,
+                    resource=a.resource,
+                    previous_state=a_state,
+                    new_state=a_state,
+                    on_chain=None,
+                    detail=f"verification not supported for type {a.type}",
+                )
+            )
+            continue
+
+        if not account_exists:
+            skipped.append(
+                VerifiedAuthority(
+                    authority_id=a.id,
+                    type=a_type,
+                    resource=a.resource,
+                    previous_state=a_state,
+                    new_state=a_state,
+                    on_chain=None,
+                    detail=error_msg or "account not verifiable",
+                )
+            )
+            continue
+
+        if not keys_observed:
+            # We reached the account but could not list its keys.
+            # Claiming 'expired' here would fabricate absence.
+            skipped.append(
+                VerifiedAuthority(
+                    authority_id=a.id,
+                    type=a_type,
+                    resource=a.resource,
+                    previous_state=a_state,
+                    new_state=a_state,
+                    on_chain=None,
+                    detail=error_msg or "access keys could not be listed",
+                )
+            )
+            continue
+
+        present = a.resource in on_chain_keys
+        new_state = (
+            AuthorityState.ACTIVE if present else AuthorityState.EXPIRED
+        )
+        a.state = new_state.value
+        a.last_verified_at = now
+
+        verified.append(
+            VerifiedAuthority(
+                authority_id=a.id,
+                type=a_type,
+                resource=a.resource,
+                previous_state=a_state,
+                new_state=new_state,
+                on_chain=present,
+                detail=(
+                    "observed on chain"
+                    if present
+                    else "not observed on chain"
+                ),
+            )
+        )
+
+    if verified:
+        await session.commit()
+
+    return VerifyReport(
+        agent_id=agent.id,
+        near_account=agent.near_account,
+        checked_at=now,
+        account_exists=account_exists,
+        total_observed_keys=total_observed,
+        verified=verified,
+        skipped=skipped,
+        error=error_msg,
+    )

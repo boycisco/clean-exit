@@ -79,5 +79,6 @@ async def test_capabilities_reflects_settings(client: httpx.AsyncClient):
     assert isinstance(data["receipt_publisher_configured"], bool)
     assert data["rate_limit_enabled"] is False
     assert "near_function_key" in data["authority_types_registered"]
+    assert "near_function_key" in data["authority_types_verifiable"]
     if not data["signer_configured"]:
         assert data["authority_types_revocable"] == []

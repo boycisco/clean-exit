@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import uuid
+import asyncio
 from contextlib import asynccontextmanager
 
 import httpx
@@ -57,9 +58,25 @@ async def lifespan(application: FastAPI):
                     "Clear BOOTSTRAP_TOKEN and restart.",
                     created.id,
                 )
+    worker_task = None
+    stop_event = asyncio.Event()
+    if settings.worker_enabled:
+        from jobs import worker_loop
+
+        worker_id = str(uuid.uuid4())
+        worker_task = asyncio.create_task(worker_loop(worker_id, stop_event))
+        log.info("Worker started (id=%s)", worker_id)
+
     try:
         yield
     finally:
+        stop_event.set()
+        if worker_task is not None:
+            worker_task.cancel()
+            try:
+                await worker_task
+            except (asyncio.CancelledError, Exception):
+                pass
         await get_engine().dispose()
 
 

@@ -42,6 +42,12 @@ class Settings(BaseSettings):
     rate_limit_default: int = 60
     rate_limit_destructive: int = 10
 
+    # Worker
+    worker_enabled: bool = False
+    worker_poll_seconds: float = 2.0
+    worker_max_retries: int = 3
+    worker_stale_seconds: int = 60
+
     @property
     def cors_origins(self) -> list[str]:
         return [o.strip() for o in self.app_cors_origins.split(",") if o.strip()]

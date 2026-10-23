@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 
 from fastapi import APIRouter, Depends
 from sqlalchemy import select
@@ -24,11 +24,29 @@ from schemas import (
     TerminationJobRead,
     TerminationPlan,
     TerminationRequest,
+    ReceiptResult,
 )
 
+from near import NearError, NearRpcUnavailable, get_rpc
+from receipts import create_receipt
+from signer import Signer, require_signer
+from authority import execute_revoke_authority
 
 router = APIRouter(tags=["termination"])
 
+TRANSIENT_CODES = {
+    "rpc_unavailable",
+    "signer_key_missing",
+}
+PERMANENT_CODES = {
+    "unsupported_type",
+    "not_active",
+    "self_revocation_refused",
+    "signer_cannot_revoke",
+    "no_near_account",
+    "signer_unavailable",
+    "signer_invalid",
+}
 
 # ---------------------------------------------------------------------------
 # Planner (read-only)
@@ -309,3 +327,265 @@ async def list_jobs(
         .all()
     )
     return [TerminationJobRead.model_validate(r) for r in rows]
+
+
+# ---------------------------------------------------------------------------
+# Phase engine — called by jobs.py worker
+# ---------------------------------------------------------------------------
+
+PHASE_ORDER = [
+    JobPhase.VALIDATE,
+    JobPhase.INVENTORY,
+    JobPhase.PLAN,
+    JobPhase.REVOKE,
+    JobPhase.RESOLVE_OBLIGATIONS,
+    JobPhase.VERIFY,
+    JobPhase.FINALIZE,
+    JobPhase.COMPLETE,
+]
+
+
+class PhaseAbort(Exception):
+    """Terminal failure for a job — stop, mark failed."""
+
+
+async def _set_phase(
+    session: AsyncSession,
+    job: TerminationJob,
+    phase: JobPhase,
+    status: JobStatus | None = None,
+) -> None:
+    job.phase = phase.value
+    if status is not None:
+        job.status = status.value
+    await session.flush()
+
+
+async def phase_validate(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    if agent.status in ("clean", "failed"):
+        raise PhaseAbort(f"agent is already '{agent.status}'")
+    agent.status = "terminating"
+    await _set_phase(session, job, JobPhase.INVENTORY, JobStatus.RUNNING)
+
+
+async def phase_inventory(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    rows = (
+        (
+            await session.execute(
+                select(AuthorityModel).where(AuthorityModel.agent_id == agent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    job.plan = {
+        "inventory": [
+            {"id": a.id, "type": a.type, "resource": a.resource, "state": a.state}
+            for a in rows
+        ]
+    }
+    await _set_phase(session, job, JobPhase.PLAN)
+
+
+async def phase_plan(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    rows = (
+        (
+            await session.execute(
+                select(AuthorityModel).where(AuthorityModel.agent_id == agent.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    plan = await build_plan(agent, list(rows))
+    if job.plan is None:
+        job.plan = {}
+    job.plan["steps"] = [s.model_dump(mode="json") for s in plan.steps]
+    await _set_phase(session, job, JobPhase.REVOKE)
+
+
+async def phase_revoke(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    if not job.plan or "steps" not in job.plan:
+        raise PhaseAbort("no plan available at revoke phase")
+
+    try:
+        signer = require_signer()
+    except Exception as e:
+        raise PhaseAbort(f"signer unavailable: {e}") from e
+
+    rpc = get_rpc()
+
+    existing = (
+        (
+            await session.execute(
+                select(TerminationAttempt).where(TerminationAttempt.job_id == job.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    by_authority = {a.authority_id: a for a in existing if a.authority_id}
+
+    for step in job.plan["steps"]:
+        if step["action"] not in ("revoke", "registry_revoke"):
+            continue
+
+        aid = step["authority_id"]
+        attempt = by_authority.get(aid)
+
+        if attempt and attempt.status in (
+            "revoked",
+            "already_absent",
+            "unsupported",
+            "skipped",
+        ):
+            continue
+
+        if attempt is None:
+            attempt = TerminationAttempt(
+                job_id=job.id,
+                authority_id=aid,
+                action=step["action"],
+                status="in_progress",
+            )
+            session.add(attempt)
+            await session.flush()
+
+        authority = (
+            await session.execute(
+                select(AuthorityModel).where(AuthorityModel.id == aid)
+            )
+        ).scalar_one_or_none()
+        if authority is None:
+            attempt.status = "skipped"
+            attempt.error = {"code": "authority_missing"}
+            await session.flush()
+            continue
+
+        if step["action"] == "registry_revoke":
+            attempt.status = "skipped"
+            attempt.error = {
+                "code": "not_implemented",
+                "message": "child delegation registry-only",
+            }
+            await session.flush()
+            continue
+
+        try:
+            report = await execute_revoke_authority(
+                authority=authority,
+                agent=agent,
+                signer=signer,
+                rpc=rpc,
+                session=session,
+            )
+            attempt.status = report.outcome.value
+            attempt.tx_hash = report.tx_hash
+            if report.outcome in (
+                RevokeOutcome.REQUIRES_MANUAL_ACTION,
+                RevokeOutcome.SUBMITTED_BUT_FAILED,
+            ):
+                attempt.error = {
+                    "code": report.outcome.value,
+                    "message": report.detail,
+                }
+        except ApiError as e:
+            attempt.status = "failed"
+            attempt.error = {"code": e.code, "message": e.message}
+        await session.flush()
+
+    await _set_phase(session, job, JobPhase.RESOLVE_OBLIGATIONS)
+
+
+async def phase_resolve_obligations(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    if job.plan is None:
+        job.plan = {}
+
+    manual = []
+    for step in job.plan.get("steps", []):
+        if step["action"] == "manual":
+            manual.append(
+                {
+                    "authority_id": step["authority_id"],
+                    "type": step["type"],
+                    "resource": step["resource"],
+                    "reason": step["verification"],
+                }
+            )
+    job.plan["manual_items"] = manual
+    await _set_phase(session, job, JobPhase.VERIFY)
+
+
+async def phase_verify(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    await _set_phase(session, job, JobPhase.FINALIZE)
+
+
+def _classify_result(
+    attempts: list[TerminationAttempt], manual_items: list[dict]
+) -> ReceiptResult:
+    failed = any(
+        a.status in ("failed", "requires_manual_action", "submitted_but_failed")
+        for a in attempts
+    )
+    if failed:
+        return ReceiptResult.PARTIAL
+    if manual_items:
+        return ReceiptResult.PARTIAL
+    return ReceiptResult.CLEAN
+
+
+async def phase_finalize(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    attempts = (
+        (
+            await session.execute(
+                select(TerminationAttempt).where(TerminationAttempt.job_id == job.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    result = _classify_result(
+        list(attempts), (job.plan or {}).get("manual_items", [])
+    )
+
+    receipt = create_receipt(job, agent, list(attempts), result)
+    session.add(receipt)
+    await session.flush()
+
+    job.receipt_id = receipt.id
+    agent.status = result.value
+    await _set_phase(session, job, JobPhase.COMPLETE, JobStatus.SUCCEEDED)
+
+
+async def phase_complete(
+    session: AsyncSession, job: TerminationJob, agent: AgentModel
+) -> None:
+    job.completed_at = datetime.now(timezone.utc)
+    job.status = JobStatus.SUCCEEDED.value
+    await session.flush()
+
+
+PHASE_HANDLERS = {
+    JobPhase.VALIDATE: phase_validate,
+    JobPhase.INVENTORY: phase_inventory,
+    JobPhase.PLAN: phase_plan,
+    JobPhase.REVOKE: phase_revoke,
+    JobPhase.RESOLVE_OBLIGATIONS: phase_resolve_obligations,
+    JobPhase.VERIFY: phase_verify,
+    JobPhase.FINALIZE: phase_finalize,
+    JobPhase.COMPLETE: phase_complete,
+}

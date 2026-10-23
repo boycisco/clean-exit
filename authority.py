@@ -417,35 +417,24 @@ async def verify_agent(
     )
 
 
-@router.post(
-    "/agents/{agent_id}/authorities/{authority_id}/revoke",
-    response_model=RevokeReport,
-    tags=["authorities"],
-    status_code=200,
-)
-async def revoke_authority(
-    agent_id: str,
-    authority_id: str,
-    agent: AgentModel = Depends(require_agent_owner),
-    signer: Signer = Depends(require_signer),
-    session: AsyncSession = Depends(get_session),
-    rpc: NearRpc = Depends(get_rpc),
-) -> RevokeReport:
-    """Delete a NEAR function-call access key and verify the outcome.
+# ---------------------------------------------------------------------------
+# Revoke engine — callable from the endpoint AND the termination worker
+# ---------------------------------------------------------------------------
 
-    WARNING: This modifies on-chain state. It deletes the access key
-    referenced by the authority's `resource` field. The signer must be
-    the account that owns the key, or hold a FullAccess key on that account.
+async def execute_revoke_authority(
+    *,
+    authority: AuthorityModel,
+    agent: AgentModel,
+    signer: "Signer",
+    rpc: NearRpc,
+    session: AsyncSession,
+) -> RevokeReport:
+    """Revoke one NEAR function-call key. Caller handles auth + commit.
+
+    Uses session.flush() (not commit()) so callers control transaction
+    boundaries — critical for atomic job phase commits in the worker.
     """
     now = datetime.now(timezone.utc)
-
-    authority = (
-        await session.execute(
-            select(AuthorityModel).where(AuthorityModel.id == authority_id)
-        )
-    ).scalar_one_or_none()
-    if authority is None or authority.agent_id != agent.id:
-        raise ApiError("not_found", "Authority not found.", status_code=404)
 
     if authority.type != AuthorityType.NEAR_FUNCTION_KEY.value:
         raise ApiError(
@@ -477,7 +466,6 @@ async def revoke_authority(
             status_code=409,
         )
 
-    # ---- Pre-check: is the key actually on chain? ----
     try:
         observed = await rpc.get_access_keys(agent.near_account)
     except NearError as e:
@@ -490,10 +478,9 @@ async def revoke_authority(
     observed_keys = {k.get("public_key", "") for k in observed}
 
     if authority.resource not in observed_keys:
-        # Already gone — reconcile without spending a transaction.
         authority.state = AuthorityState.EXPIRED.value
         authority.last_verified_at = now
-        await session.commit()
+        await session.flush()
         return RevokeReport(
             authority_id=authority.id,
             previous_state=AuthorityState.ACTIVE,
@@ -504,15 +491,12 @@ async def revoke_authority(
             verified_absent=True,
         )
 
-    # ---- Can the signer act on this account? ----
     if signer.account_id != agent.near_account:
-        has_full_access = False
-        for k in observed:
-            if k.get("public_key") == signer.public_key:
-                perm = (k.get("access_key") or {}).get("permission")
-                if perm == "FullAccess":
-                    has_full_access = True
-                    break
+        has_full_access = any(
+            k.get("public_key") == signer.public_key
+            and (k.get("access_key") or {}).get("permission") == "FullAccess"
+            for k in observed
+        )
         if not has_full_access:
             raise ApiError(
                 "signer_cannot_revoke",
@@ -521,22 +505,13 @@ async def revoke_authority(
                 status_code=403,
             )
 
-    # ---- Fetch nonce and block hash ----
     try:
         signer_key = await rpc.get_access_key(signer.account_id, signer.public_key)
-    except NearError as e:
-        raise ApiError(
-            "signer_key_missing",
-            f"cannot fetch signer nonce: {e.message}",
-            status_code=500,
-        ) from e
-
-    try:
         nonce = int(signer_key["nonce"]) + 1
-    except (KeyError, ValueError, TypeError) as e:
+    except (NearError, KeyError, ValueError, TypeError) as e:
         raise ApiError(
             "signer_key_missing",
-            "signer access key response missing nonce",
+            "cannot fetch signer nonce",
             status_code=500,
         ) from e
 
@@ -549,7 +524,6 @@ async def revoke_authority(
             status_code=502,
         ) from e
 
-    # ---- Build, sign, broadcast ----
     signed_b64 = build_delete_key_transaction(
         signer=signer,
         target_public_key=authority.resource,
@@ -568,13 +542,12 @@ async def revoke_authority(
             details={
                 "near_error_code": getattr(e, "code", None),
                 "near_detail": getattr(e, "detail", None),
-                "signed_tx_len_bytes": len(signed_b64) * 3 // 4,
             },
         ) from e
 
     if not broadcast["success"]:
         authority.state = AuthorityState.FAILED.value
-        await session.commit()
+        await session.flush()
         return RevokeReport(
             authority_id=authority.id,
             previous_state=AuthorityState.ACTIVE,
@@ -585,12 +558,11 @@ async def revoke_authority(
             verified_absent=None,
         )
 
-    # ---- Post-check: verify the key is gone ----
     try:
         post = await rpc.get_access_keys(agent.near_account)
     except NearError as e:
         authority.state = AuthorityState.REQUIRES_MANUAL_ACTION.value
-        await session.commit()
+        await session.flush()
         return RevokeReport(
             authority_id=authority.id,
             previous_state=AuthorityState.ACTIVE,
@@ -601,10 +573,9 @@ async def revoke_authority(
             verified_absent=None,
         )
 
-    post_keys = {k.get("public_key", "") for k in post}
-    if authority.resource in post_keys:
+    if authority.resource in {k.get("public_key", "") for k in post}:
         authority.state = AuthorityState.REQUIRES_MANUAL_ACTION.value
-        await session.commit()
+        await session.flush()
         return RevokeReport(
             authority_id=authority.id,
             previous_state=AuthorityState.ACTIVE,
@@ -617,7 +588,7 @@ async def revoke_authority(
 
     authority.state = AuthorityState.REVOKED.value
     authority.last_verified_at = now
-    await session.commit()
+    await session.flush()
     return RevokeReport(
         authority_id=authority.id,
         previous_state=AuthorityState.ACTIVE,
@@ -627,3 +598,37 @@ async def revoke_authority(
         detail="key revoked and confirmed absent on chain",
         verified_absent=True,
     )
+
+
+@router.post(
+    "/agents/{agent_id}/authorities/{authority_id}/revoke",
+    response_model=RevokeReport,
+    tags=["authorities"],
+    status_code=200,
+)
+async def revoke_authority(
+    agent_id: str,
+    authority_id: str,
+    agent: AgentModel = Depends(require_agent_owner),
+    signer: "Signer" = Depends(require_signer),
+    session: AsyncSession = Depends(get_session),
+    rpc: NearRpc = Depends(get_rpc),
+) -> RevokeReport:
+    """Delete a NEAR function-call access key and verify the outcome."""
+    authority = (
+        await session.execute(
+            select(AuthorityModel).where(AuthorityModel.id == authority_id)
+        )
+    ).scalar_one_or_none()
+    if authority is None or authority.agent_id != agent.id:
+        raise ApiError("not_found", "Authority not found.", status_code=404)
+
+    report = await execute_revoke_authority(
+        authority=authority,
+        agent=agent,
+        signer=signer,
+        rpc=rpc,
+        session=session,
+    )
+    await session.commit()
+    return report

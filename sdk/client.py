@@ -60,6 +60,16 @@ class CleanExitClient:
 
     __str__ = __repr__
 
+
+    def publish_receipt(self, receipt_id: str) -> dict[str, Any]:
+        return self._request("POST", f"/api/v1/receipts/{receipt_id}/publish")
+
+    def latest_receipt(self, agent_id: str) -> dict[str, Any]:
+        return self._request("GET", f"/api/v1/agents/{agent_id}/receipt")
+
+    def capabilities(self) -> dict[str, Any]:
+        return self._request("GET", "/api/v1/capabilities")
+
     # ------------------------------------------------------------------
     # Internal HTTP helper
     # ------------------------------------------------------------------

@@ -19,3 +19,8 @@ build/
 .vscode/
 .DS_Store
 Thumbs.db
+contract/vendor/
+
+contract/target/
+
+contract/.cargo/

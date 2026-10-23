@@ -11,14 +11,12 @@ interface OverviewDashboardProps {
   onSelectAgent: (agentId: string) => void;
   onOpenRegisterModal: () => void;
   onNavigateToAgents: () => void;
-  onNavigateToActivity: () => void;
 }
 
 export function OverviewDashboard({
   onSelectAgent,
   onOpenRegisterModal,
   onNavigateToAgents,
-  onNavigateToActivity,
 }: OverviewDashboardProps) {
   const [agents, setAgents] = useState<Agent[]>([]);
   const [recentAudits, setRecentAudits] = useState<Array<{ event: AuditEvent; agentName: string }>>([]);
@@ -225,16 +223,6 @@ export function OverviewDashboard({
               <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">
                 Recent activity
               </h3>
-              {recentAudits.length > 0 && (
-                <button
-                  type="button"
-                  onClick={onNavigateToActivity}
-                  className="text-[12px] font-medium text-[var(--accent)] hover:underline flex items-center gap-1"
-                >
-                  <span>View activity</span>
-                  <ArrowRight size={12} />
-                </button>
-              )}
             </div>
 
             {recentAudits.length === 0 ? (

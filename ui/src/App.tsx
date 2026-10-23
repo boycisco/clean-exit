@@ -6,7 +6,6 @@ import { Sidebar, AppView } from './components/layout/Sidebar.tsx';
 import { OverviewDashboard } from './features/overview/OverviewDashboard.tsx';
 import { AgentsList } from './features/agents/AgentsList.tsx';
 import { AgentDetails } from './features/agents/AgentDetails.tsx';
-import { ActivityView } from './features/activity/ActivityView.tsx';
 import { SettingsView } from './features/settings/SettingsView.tsx';
 import { RegisterAgentModal } from './features/agents/RegisterAgentModal.tsx';
 import type { Agent } from './types/api.ts';
@@ -47,8 +46,6 @@ function MainApp() {
         return 'Agents';
       case 'agent-detail':
         return 'Agent workspace';
-      case 'activity':
-        return 'Activity';
       case 'settings':
       case 'connection':
         return 'Settings';
@@ -84,7 +81,6 @@ function MainApp() {
               onSelectAgent={handleSelectAgent}
               onOpenRegisterModal={() => setIsRegisterAgentModalOpen(true)}
               onNavigateToAgents={() => setCurrentView('agents')}
-              onNavigateToActivity={() => setCurrentView('activity')}
             />
           )}
 
@@ -99,12 +95,7 @@ function MainApp() {
             <AgentDetails
               agentId={selectedAgentId}
               onBack={() => setCurrentView('agents')}
-              onNavigateToActivity={() => setCurrentView('activity')}
             />
-          )}
-
-          {currentView === 'activity' && (
-            <ActivityView onSelectAgent={handleSelectAgent} />
           )}
 
           {(currentView === 'settings' || currentView === 'connection') && (

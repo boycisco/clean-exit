@@ -45,12 +45,11 @@ import {
 interface AgentDetailsProps {
   agentId: string;
   onBack: () => void;
-  onNavigateToActivity?: () => void;
 }
 
 type TabType = 'overview' | 'authority' | 'termination' | 'activity';
 
-export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDetailsProps) {
+export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
   const { capabilities } = useConnection();
   const [agent, setAgent] = useState<Agent | null>(null);
   const [activeTab, setActiveTab] = useState<TabType>('overview');

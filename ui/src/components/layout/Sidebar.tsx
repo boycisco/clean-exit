@@ -2,7 +2,6 @@ import React from 'react';
 import {
   LayoutDashboard,
   ShieldCheck,
-  Activity,
   Settings,
   Plug,
   X,
@@ -12,7 +11,6 @@ export type AppView =
   | 'overview'
   | 'agents'
   | 'agent-detail'
-  | 'activity'
   | 'settings'
   | 'connection';
 
@@ -40,11 +38,6 @@ export function Sidebar({
       label: 'Agents',
       icon: ShieldCheck,
       matchViews: ['agents', 'agent-detail'],
-    },
-    {
-      id: 'activity' as AppView,
-      label: 'Activity',
-      icon: Activity,
     },
   ];
 

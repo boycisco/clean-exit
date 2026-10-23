@@ -314,3 +314,31 @@ def test_build_delete_key_transaction_rejects_wrong_block_hash(tmp_path):
             nonce=1,
             block_hash=b"\x00" * 31,  # too short
         )
+
+
+async def test_view_function_call_uses_correct_request_type():
+    """Regression: NEAR RPC requires request_type='call_function', not 'call'."""
+    import json
+    captured = {}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        payload = json.loads(request.content)
+        captured["params"] = payload["params"]
+        return httpx.Response(
+            200,
+            json={
+                "jsonrpc": "2.0",
+                "id": "x",
+                "result": {
+                    "result": list(b'{"ok":true}'),
+                    "logs": [],
+                    "block_height": 1,
+                    "block_hash": "h",
+                },
+            },
+        )
+
+    rpc = NearRpc("http://test", transport=httpx.MockTransport(handler))
+    result = await rpc.view_function_call("contract.testnet", "get", {"k": "v"})
+    assert result == {"ok": True}
+    assert captured["params"]["request_type"] == "call_function"

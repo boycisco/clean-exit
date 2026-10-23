@@ -69,7 +69,7 @@ def _handler(chain: MockChain):
                         "result": {"nonce": chain.nonce, "permission": "FullAccess"},
                     },
                 )
-            if rt == "call":
+            if rt == "call_function":
                 if chain.view_fails:
                     return httpx.Response(
                         200,

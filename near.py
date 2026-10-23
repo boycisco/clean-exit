@@ -141,7 +141,7 @@ class NearRpc:
         result = await self._call(
             "query",
             {
-                "request_type": "call",
+                "request_type": "call_function",
                 "finality": "final",
                 "account_id": contract_id,
                 "method_name": method,

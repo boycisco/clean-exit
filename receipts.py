@@ -173,17 +173,36 @@ async def _publish(
             detail="already published",
         )
 
-    # If a previous attempt left it as pending with a tx hash, don't submit again.
+    # If a previous attempt left it pending with a tx hash, re-check chain.
+    # If the earlier transaction landed, promote instead of resubmitting.
     if (
         receipt.verification_status == VerificationStatus.PENDING.value
         and receipt.onchain_tx_hash
     ):
+        if settings.receipt_contract:
+            try:
+                record = await rpc.view_function_call(
+                    settings.receipt_contract, "get", {"receipt_id": receipt.id}
+                )
+            except NearError:
+                record = None
+            if record and record.get("payload_hash") == receipt.payload_hash:
+                receipt.verification_status = VerificationStatus.PUBLISHED.value
+                receipt.published_at = datetime.now(timezone.utc)
+                await session.commit()
+                return PublishResult(
+                    receipt_id=receipt.id,
+                    verification_status=VerificationStatus.PUBLISHED,
+                    onchain_tx_hash=receipt.onchain_tx_hash,
+                    published_at=receipt.published_at,
+                    detail="previous publish confirmed on chain",
+                )
         return PublishResult(
             receipt_id=receipt.id,
             verification_status=VerificationStatus.PENDING,
             onchain_tx_hash=receipt.onchain_tx_hash,
             published_at=receipt.published_at,
-            detail="previous publish in flight; verify to resolve",
+            detail="previous publish still in flight; chain check inconclusive",
         )
 
     # Mark pending before submitting so a crash doesn't lose the fact we tried.
@@ -371,7 +390,10 @@ async def verify_receipt(
         onchain_status = VerificationStatus.VERIFICATION_FAILED
 
     # If we're supposed to have published, ask the chain directly.
-    if onchain_status == VerificationStatus.PUBLISHED:
+    if onchain_status in (
+        VerificationStatus.PUBLISHED,
+        VerificationStatus.PENDING,
+    ):
         if not settings.receipt_contract:
             notes.append("contract not configured in this deployment")
             onchain_status = VerificationStatus.NOT_PUBLISHED
@@ -382,18 +404,27 @@ async def verify_receipt(
                 )
             except NearError as e:
                 notes.append(f"chain query failed: {e.message}")
-                onchain_status = VerificationStatus.PENDING
                 record = None
 
-            if record is None and onchain_status == VerificationStatus.PUBLISHED:
-                notes.append("receipt not found on chain despite published status")
-                onchain_status = VerificationStatus.VERIFICATION_FAILED
-            elif record is not None:
+            if record is None:
+                if onchain_status == VerificationStatus.PENDING:
+                    notes.append("receipt not yet visible on chain; still pending")
+                else:
+                    notes.append("receipt not found on chain despite published status")
+                    onchain_status = VerificationStatus.VERIFICATION_FAILED
+            else:
                 onchain_hash = record.get("payload_hash")
                 onchain_matches = onchain_hash == receipt.payload_hash
                 if not onchain_matches:
                     notes.append("on-chain hash does not match stored payload_hash")
                     onchain_status = VerificationStatus.VERIFICATION_FAILED
+                else:
+                    if onchain_status == VerificationStatus.PENDING:
+                        receipt.verification_status = VerificationStatus.PUBLISHED.value
+                        receipt.published_at = datetime.now(timezone.utc)
+                        await session.commit()
+                        notes.append("pending publish resolved to published")
+                    onchain_status = VerificationStatus.PUBLISHED
     elif onchain_status == VerificationStatus.NOT_PUBLISHED:
         notes.append("receipt has not been published on chain")
 

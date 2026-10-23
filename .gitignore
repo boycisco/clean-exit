@@ -24,3 +24,7 @@ contract/vendor/
 contract/target/
 
 contract/.cargo/
+
+*.db-wal
+
+*.db-shm

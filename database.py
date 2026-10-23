@@ -48,11 +48,26 @@ _session_factory: async_sessionmaker[AsyncSession] | None = None
 def get_engine() -> AsyncEngine:
     global _engine
     if _engine is None:
+        url = get_settings().database_url
+        connect_args: dict = {}
+        if url.startswith("sqlite"):
+            connect_args = {"timeout": 30, "check_same_thread": False}
         _engine = create_async_engine(
-            get_settings().database_url,
+            url,
             echo=False,
             future=True,
+            connect_args=connect_args,
         )
+        if url.startswith("sqlite"):
+            from sqlalchemy import event
+
+            @event.listens_for(_engine.sync_engine, "connect")
+            def _set_sqlite_pragma(dbapi_connection, connection_record):
+                cursor = dbapi_connection.cursor()
+                cursor.execute("PRAGMA journal_mode=WAL")
+                cursor.execute("PRAGMA busy_timeout=30000")
+                cursor.execute("PRAGMA synchronous=NORMAL")
+                cursor.close()
     return _engine
 
 

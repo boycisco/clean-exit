@@ -7,12 +7,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from auth import require_agent_owner, require_owner
 from database import get_session
 from models import Agent as AgentModel
-from models import Owner
+from models import Owner, AuditEvent
 from schemas import (
     AgentCreate,
     AgentRead,
     AgentStatus,
     AgentUpdate,
+    AuditEventRead,
 )
 
 
@@ -75,3 +76,29 @@ async def update_agent(
     await session.commit()
     await session.refresh(agent)
     return AgentRead.model_validate(agent)
+
+
+@router.get(
+    "/{agent_id}/audit",
+    response_model=list[AuditEventRead],
+    tags=["agents"],
+)
+async def agent_audit(
+    agent: AgentModel = Depends(require_agent_owner),
+    session: AsyncSession = Depends(get_session),
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+) -> list[AuditEventRead]:
+    """Chronological audit trail for this agent. Owner-scoped.
+
+    Events are returned oldest-first so clients can render a timeline.
+    """
+    stmt = (
+        select(AuditEvent)
+        .where(AuditEvent.agent_id == agent.id)
+        .order_by(AuditEvent.created_at.asc(), AuditEvent.id.asc())
+        .limit(limit)
+        .offset(offset)
+    )
+    rows = (await session.execute(stmt)).scalars().all()
+    return [AuditEventRead.model_validate(r) for r in rows]

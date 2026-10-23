@@ -25,6 +25,7 @@ from schemas import (
     TerminationPlan,
     TerminationRequest,
     ReceiptResult,
+    RevokeOutcome,
 )
 
 from near import NearError, NearRpcUnavailable, get_rpc
@@ -329,6 +330,67 @@ async def list_jobs(
     return [TerminationJobRead.model_validate(r) for r in rows]
 
 
+@router.post(
+    "/terminations/{job_id}/retry",
+    response_model=TerminationJobRead,
+    status_code=202,
+    tags=["termination"],
+)
+async def retry_job(
+    job_id: str,
+    owner: Owner = Depends(require_owner),
+    session: AsyncSession = Depends(get_session),
+) -> TerminationJobRead:
+    """Retry a failed or partial job.
+
+    - Resets retry_count, clears lock, schedules immediate pending state.
+    - Preserves existing attempt rows — phase_revoke resumes from them,
+      skipping terminal statuses and retrying failed ones.
+    """
+    job = (
+        await session.execute(
+            select(TerminationJob).where(TerminationJob.id == job_id)
+        )
+    ).scalar_one_or_none()
+    if job is None or job.owner_id != owner.id:
+        raise ApiError("not_found", "Job not found.", status_code=404)
+
+    if job.status not in (JobStatus.FAILED.value, JobStatus.PARTIAL.value):
+        raise ApiError(
+            "not_retryable",
+            f"job is '{job.status}', only failed or partial jobs can be retried",
+            status_code=409,
+        )
+
+    if job.locked_by is not None:
+        raise ApiError(
+            "locked",
+            "job is currently being processed",
+            status_code=409,
+        )
+
+    job.status = JobStatus.PENDING.value
+    job.retry_count = 0
+    job.next_attempt_at = None
+    job.completed_at = None
+    job.error = None
+    # Note: phase is left where it stopped. The worker resumes from there.
+
+    await audit.record(
+        session,
+        agent_id=job.agent_id,
+        actor_owner_id=owner.id,
+        action="job_retried",
+        target_type="termination_job",
+        target_id=job.id,
+        payload={"previous_status": "failed_or_partial"},
+    )
+
+    await session.commit()
+    await session.refresh(job)
+    return TerminationJobRead.model_validate(job)
+
+
 # ---------------------------------------------------------------------------
 # Phase engine — called by jobs.py worker
 # ---------------------------------------------------------------------------
@@ -502,8 +564,32 @@ async def phase_revoke(
             attempt.error = {"code": e.code, "message": e.message}
         await session.flush()
 
-    await _set_phase(session, job, JobPhase.RESOLVE_OBLIGATIONS)
+    # Audit summary of what just happened in the revoke phase.
+    # Re-query to capture attempts created during this run, plus any
+    # carried over from a prior attempt of the same job.
+    final_attempts = (
+        (
+            await session.execute(
+                select(TerminationAttempt).where(TerminationAttempt.job_id == job.id)
+            )
+        )
+        .scalars()
+        .all()
+    )
+    attempt_summary: dict[str, int] = {}
+    for a in final_attempts:
+        attempt_summary[a.status] = attempt_summary.get(a.status, 0) + 1
+    await audit.record(
+        session,
+        agent_id=agent.id,
+        actor_owner_id=job.owner_id,
+        action="revocations_completed",
+        target_type="termination_job",
+        target_id=job.id,
+        payload={"attempts_by_status": attempt_summary},
+    )
 
+    await _set_phase(session, job, JobPhase.RESOLVE_OBLIGATIONS)
 
 async def phase_resolve_obligations(
     session: AsyncSession, job: TerminationJob, agent: AgentModel
@@ -568,15 +654,42 @@ async def phase_finalize(
 
     job.receipt_id = receipt.id
     agent.status = result.value
-    await _set_phase(session, job, JobPhase.COMPLETE, JobStatus.SUCCEEDED)
+    job.status = {
+        ReceiptResult.CLEAN: JobStatus.SUCCEEDED.value,
+        ReceiptResult.PARTIAL: JobStatus.PARTIAL.value,
+        ReceiptResult.FAILED: JobStatus.FAILED.value,
+    }[result]
+    await _set_phase(session, job, JobPhase.COMPLETE)
+
+    await audit.record(
+        session,
+        agent_id=agent.id,
+        actor_owner_id=job.owner_id,
+        action="receipt_created",
+        target_type="receipt",
+        target_id=receipt.id,
+        payload={"result": result.value},
+    )
 
 
 async def phase_complete(
     session: AsyncSession, job: TerminationJob, agent: AgentModel
 ) -> None:
     job.completed_at = datetime.now(timezone.utc)
-    job.status = JobStatus.SUCCEEDED.value
     await session.flush()
+
+    await audit.record(
+        session,
+        agent_id=agent.id,
+        actor_owner_id=job.owner_id,
+        action="job_completed",
+        target_type="termination_job",
+        target_id=job.id,
+        payload={
+            "result": agent.status,
+            "receipt_id": job.receipt_id,
+        },
+    )
 
 
 PHASE_HANDLERS = {

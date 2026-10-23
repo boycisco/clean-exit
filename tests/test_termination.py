@@ -153,3 +153,88 @@ async def test_get_job_cross_owner_404(client, agent_with_graph, session):
         headers={"Authorization": "Bearer ce_other2"},
     )
     assert r.status_code == 404
+
+
+async def test_retry_requires_terminal_status(client, agent_with_graph):
+    agent, raw, *_ = agent_with_graph
+    r = await client.post(
+        f"/api/v1/agents/{agent.id}/terminate", headers=_h(raw), json={}
+    )
+    job_id = r.json()["id"]
+
+    # Job is pending, not failed/partial → retry refused.
+    r = await client.post(
+        f"/api/v1/terminations/{job_id}/retry", headers=_h(raw)
+    )
+    assert r.status_code == 409
+    assert r.json()["error"]["code"] == "not_retryable"
+
+
+async def test_retry_resets_and_audits(client, agent_with_graph, session):
+    from models import TerminationJob
+    from sqlalchemy import select
+
+    agent, raw, *_ = agent_with_graph
+    r = await client.post(
+        f"/api/v1/agents/{agent.id}/terminate", headers=_h(raw), json={}
+    )
+    job_id = r.json()["id"]
+
+    # Force the job into a failed state.
+    job = (
+        await session.execute(
+            select(TerminationJob).where(TerminationJob.id == job_id)
+        )
+    ).scalar_one()
+    job.status = "failed"
+    job.retry_count = 2
+    job.error = {"code": "max_retries", "message": "boom"}
+    await session.commit()
+
+    r = await client.post(
+        f"/api/v1/terminations/{job_id}/retry", headers=_h(raw)
+    )
+    assert r.status_code == 202
+    data = r.json()
+    assert data["status"] == "pending"
+    assert data["retry_count"] == 0
+
+    await session.refresh(job)
+    assert job.error is None
+    assert job.completed_at is None
+
+    # Audit event recorded.
+    audit_events = await client.get(
+        f"/api/v1/agents/{agent.id}/audit", headers=_h(raw)
+    )
+    actions = [e["action"] for e in audit_events.json()]
+    assert "job_retried" in actions
+
+
+async def test_retry_cross_owner_404(client, agent_with_graph, session):
+    from models import TerminationJob, Owner
+    from sqlalchemy import select
+
+    agent, raw, *_ = agent_with_graph
+    r = await client.post(
+        f"/api/v1/agents/{agent.id}/terminate", headers=_h(raw), json={}
+    )
+    job_id = r.json()["id"]
+
+    job = (
+        await session.execute(
+            select(TerminationJob).where(TerminationJob.id == job_id)
+        )
+    ).scalar_one()
+    job.status = "failed"
+    await session.commit()
+
+    other = Owner(name="other-retry", token_hash=hash_token("ce_other_retry"))
+    session.add(other)
+    await session.commit()
+
+    r = await client.post(
+        f"/api/v1/terminations/{job_id}/retry",
+        headers={"Authorization": "Bearer ce_other_retry"},
+    )
+    assert r.status_code == 404

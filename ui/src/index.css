@@ -1,0 +1,156 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: dark;
+
+  --bg-app: #0B0D0C;
+  --bg-sidebar: #0E100F;
+  --bg-surface: #121513;
+  --bg-surface-hover: #181C19;
+  --bg-input: #101311;
+  --bg-overlay: #171A18;
+
+  --border-subtle: #242925;
+  --border-default: #303731;
+  --border-strong: #424A43;
+
+  --text-primary: #E8ECE8;
+  --text-secondary: #A0A8A0;
+  --text-muted: #737C74;
+
+  --accent: #A6E3B4;
+  --accent-hover: #B9EBC4;
+  --accent-muted: #1A2A20;
+  --accent-text: #0B160E;
+
+  --status-success: #A6E3B4;
+  --status-success-bg: #17271D;
+
+  --status-warning: #E7C887;
+  --status-warning-bg: #2B2417;
+
+  --status-danger: #F08D8D;
+  --status-danger-bg: #301B1B;
+
+  --status-neutral: #A0A8A0;
+  --status-neutral-bg: #1D211E;
+
+  --focus-ring: #A6E3B4;
+
+  --radius-sm: 5px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --sidebar-width: 232px;
+  --topbar-height: 60px;
+  --content-max-width: 1440px;
+
+  --font-space-grotesk: 'Space Grotesk', system-ui, -apple-system, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+
+html,
+body {
+  font-family: var(--font-space-grotesk), sans-serif;
+  background: var(--bg-app);
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+code, pre, kbd, samp, .font-mono {
+  font-family: var(--font-mono);
+}
+
+/* Button & interactive components design tokens */
+.btn-primary {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: var(--accent);
+  color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: background-color 0.15s ease;
+  cursor: pointer;
+  border: 1px solid transparent;
+}
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+}
+.btn-primary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-secondary {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: transparent;
+  color: var(--text-primary);
+  border: 1px solid var(--border-default);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.btn-secondary:hover:not(:disabled) {
+  background-color: var(--bg-surface-hover);
+  border-color: var(--border-strong);
+}
+.btn-secondary:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.btn-danger {
+  height: 36px;
+  padding: 0 13px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  background-color: var(--status-danger-bg);
+  color: var(--status-danger);
+  border: 1px solid rgba(240, 141, 141, 0.3);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  transition: all 0.15s ease;
+  cursor: pointer;
+}
+.btn-danger:hover:not(:disabled) {
+  background-color: #3d2020;
+  border-color: var(--status-danger);
+}
+.btn-danger:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Custom scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--border-default);
+}

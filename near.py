@@ -6,6 +6,7 @@ from typing import Any, TYPE_CHECKING
 
 import base58
 import httpx
+import json
 
 from config import get_settings
 
@@ -130,6 +131,36 @@ class NearRpc:
                 "account_id": account_id,
             },
         )
+
+    async def view_function_call(
+        self, contract_id: str, method: str, args: dict[str, Any]
+    ) -> Any:
+        """Read-only contract call. Returns the parsed JSON result, or None."""
+        args_bytes = json.dumps(args, separators=(",", ":")).encode("utf-8")
+        args_b64 = base64.b64encode(args_bytes).decode("ascii")
+        result = await self._call(
+            "query",
+            {
+                "request_type": "call",
+                "finality": "final",
+                "account_id": contract_id,
+                "method_name": method,
+                "args_base64": args_b64,
+            },
+        )
+        # Real NEAR RPC wraps: {"result": [bytes], "logs": [...], ...}
+        # Some transports / test doubles may return the byte list directly.
+        # Accept either shape.
+        if isinstance(result, dict):
+            byte_list = result.get("result", [])
+        elif isinstance(result, list):
+            byte_list = result
+        else:
+            byte_list = []
+        raw = bytes(byte_list) if byte_list else b""
+        if not raw:
+            return None
+        return json.loads(raw.decode("utf-8"))
 
     async def get_access_keys(self, account_id: str) -> list[dict[str, Any]]:
         result = await self._call(
@@ -260,6 +291,53 @@ def build_delete_key_transaction(
         receiver_id=receiver,
         block_hash=block_hash,
         actions=[_action_delete_key(target_public_key)],
+    )
+    tx_hash = hashlib.sha256(unsigned).digest()
+    signature = signer.sign(tx_hash)
+    signed = _serialize_signed(unsigned, signature)
+    return base64.b64encode(signed).decode("ascii")
+
+
+# ---------------------------------------------------------------------------
+# Function call support (for the receipt registry contract)
+# ---------------------------------------------------------------------------
+
+
+def _action_function_call(method: str, args: bytes, gas: int, deposit: int) -> bytes:
+    """Borsh-encode a FunctionCall action.
+
+    Layout: variant(0x02) || method_name(String) || args(Vec<u8>)
+            || gas(u64) || deposit(u128)
+    """
+    return (
+        b"\x02"
+        + _borsh_string(method)
+        + _borsh_u32(len(args))
+        + args
+        + _borsh_u64(gas)
+        + deposit.to_bytes(16, "little")
+    )
+
+
+def build_function_call_transaction(
+    signer: "Signer",
+    receiver_id: str,
+    method: str,
+    args: dict[str, Any],
+    gas: int,
+    deposit: int,
+    nonce: int,
+    block_hash: bytes,
+) -> str:
+    """Build and sign a FunctionCall transaction; return base64-encoded bytes."""
+    args_bytes = json.dumps(args, separators=(",", ":")).encode("utf-8")
+    unsigned = _serialize_transaction(
+        signer_id=signer.account_id,
+        signer_public_key=signer.public_key,
+        nonce=nonce,
+        receiver_id=receiver_id,
+        block_hash=block_hash,
+        actions=[_action_function_call(method, args_bytes, gas, deposit)],
     )
     tx_hash = hashlib.sha256(unsigned).digest()
     signature = signer.sign(tx_hash)

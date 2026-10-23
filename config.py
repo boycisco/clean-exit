@@ -94,6 +94,26 @@ class Settings(BaseSettings):
             return False, "signer_invalid"
         return True, "ok"
 
+    def publisher_allowed(self) -> tuple[bool, str]:
+        if not self.receipt_contract:
+            return False, "contract_not_configured"
+        if not self.receipt_publisher_account or not self.receipt_publisher_key_path:
+            return False, "publisher_not_configured"
+        if not Path(self.receipt_publisher_key_path).exists():
+            return False, "publisher_unavailable"
+        if self.is_mainnet and not self.is_production:
+            return False, "mainnet_publishing_forbidden_in_non_production"
+        try:
+            from signer import Signer
+
+            Signer.from_file(
+                self.receipt_publisher_key_path,
+                expected_account=self.receipt_publisher_account,
+            )
+        except Exception:
+            return False, "publisher_invalid"
+        return True, "ok"
+
 
 @lru_cache(maxsize=1)
 def get_settings() -> Settings:

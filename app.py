@@ -125,10 +125,12 @@ def create_app() -> FastAPI:
     from agents import router as agents_router
     from authority import router as authority_router
     from termination import router as termination_router
+    from receipts import router as receipts_router
 
     application.include_router(agents_router, prefix="/api/v1")
     application.include_router(authority_router, prefix="/api/v1")
     application.include_router(termination_router, prefix="/api/v1")
+    application.include_router(receipts_router, prefix="/api/v1")
 
     @application.get("/health", response_model=Health, tags=["meta"])
     async def health() -> Health:

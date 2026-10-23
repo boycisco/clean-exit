@@ -410,6 +410,15 @@ class TerminationRequest(BaseModel):
     idempotency_key: str | None = Field(default=None, min_length=1, max_length=128)
 
 
+class PublishResult(BaseModel):
+    receipt_id: str
+    verification_status: VerificationStatus
+    onchain_tx_hash: str | None
+    published_at: datetime | None
+    detail: str | None = None
+    error: str | None = None
+
+
 class Capabilities(BaseModel):
     network: Environment
     signer_configured: bool

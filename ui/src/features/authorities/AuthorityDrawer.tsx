@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { X, KeyRound, ShieldAlert, Check, Copy, Edit2, Save } from 'lucide-react';
 import type { Authority } from '../../types/api.ts';
 import { StatusBadge } from '../../components/common/StatusBadge.tsx';
@@ -18,14 +18,25 @@ export function AuthorityDrawer({
   onClose,
   onAuthorityUpdated,
 }: AuthorityDrawerProps) {
-  if (!authority) return null;
-
   const [isEditing, setIsEditing] = useState(false);
-  const [revocable, setRevocable] = useState(authority.revocable);
-  const [scopeText, setScopeText] = useState(JSON.stringify(authority.scope, null, 2));
-  const [metaText, setMetaText] = useState(JSON.stringify(authority.meta, null, 2));
+  const [revocable, setRevocable] = useState(false);
+  const [scopeText, setScopeText] = useState('{}');
+  const [metaText, setMetaText] = useState('{}');
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<unknown | null>(null);
+
+  // Sync state when a new authority is selected
+  useEffect(() => {
+    if (authority) {
+      setRevocable(authority.revocable);
+      setScopeText(JSON.stringify(authority.scope, null, 2));
+      setMetaText(JSON.stringify(authority.meta, null, 2));
+      setIsEditing(false);
+      setSaveError(null);
+    }
+  }, [authority]);
+
+  if (!authority) return null;
 
   const typeMeta = getAuthorityTypeMeta(authority.type);
 
@@ -44,7 +55,7 @@ export function AuthorityDrawer({
     try {
       parsedMeta = JSON.parse(metaText);
     } catch {
-      setSaveError(new Error('Meta must be a valid JSON object.'));
+      setSaveError(new Error('Metadata must be a valid JSON object.'));
       return;
     }
 
@@ -106,7 +117,7 @@ export function AuthorityDrawer({
               className="flex items-center gap-1.5 px-2.5 py-1 text-xs text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
             >
               <Edit2 size={12} />
-              <span>Edit Attributes</span>
+              <span>Edit Details</span>
             </button>
           ) : (
             <div className="flex items-center gap-1.5">
@@ -132,21 +143,21 @@ export function AuthorityDrawer({
 
         {/* Resource Identifier */}
         <div className="space-y-1.5">
-          <div className="text-neutral-400 font-medium">Resource Identifier</div>
+          <div className="text-neutral-400 font-medium">Resource ID</div>
           <CodeSnippet code={authority.resource} allowCopy maxHeight="max-h-24" />
         </div>
 
         {/* Attributes Grid */}
         <div className="grid grid-cols-2 gap-3 p-3 bg-neutral-950/60 border border-neutral-800 rounded-lg">
           <div>
-            <span className="text-neutral-500 block text-[11px]">Parent Authority</span>
+            <span className="text-neutral-500 block text-[11px]">Parent Permission</span>
             <span className="font-mono text-neutral-300 truncate block">
               {authority.parent_id ? `${authority.parent_id.slice(0, 8)}...` : 'None (Root)'}
             </span>
           </div>
 
           <div>
-            <span className="text-neutral-500 block text-[11px]">Revocable Hint</span>
+            <span className="text-neutral-500 block text-[11px]">Revocable</span>
             {isEditing ? (
               <label className="flex items-center gap-1.5 mt-1 cursor-pointer">
                 <input
@@ -155,7 +166,7 @@ export function AuthorityDrawer({
                   onChange={(e) => setRevocable(e.target.checked)}
                   className="rounded bg-neutral-950 border-neutral-800 text-emerald-500"
                 />
-                <span className="text-neutral-200">Revocable</span>
+                <span className="text-neutral-200">Yes</span>
               </label>
             ) : (
               <span className={`font-mono ${authority.revocable ? 'text-emerald-400' : 'text-neutral-400'}`}>
@@ -165,7 +176,7 @@ export function AuthorityDrawer({
           </div>
 
           <div>
-            <span className="text-neutral-500 block text-[11px]">Source</span>
+            <span className="text-neutral-500 block text-[11px]">Origin</span>
             <span className="font-mono text-neutral-300 capitalize">
               {authority.source}
             </span>
@@ -181,7 +192,7 @@ export function AuthorityDrawer({
 
         {/* Scope Field */}
         <div className="space-y-1.5">
-          <div className="text-neutral-400 font-medium">Delegation Scope</div>
+          <div className="text-neutral-400 font-medium">Scope</div>
           {isEditing ? (
             <textarea
               rows={4}
@@ -196,7 +207,7 @@ export function AuthorityDrawer({
 
         {/* Metadata Field */}
         <div className="space-y-1.5">
-          <div className="text-neutral-400 font-medium">Custom Metadata</div>
+          <div className="text-neutral-400 font-medium">Metadata</div>
           {isEditing ? (
             <textarea
               rows={4}
@@ -211,8 +222,8 @@ export function AuthorityDrawer({
 
         {/* Immutable rules notice */}
         <div className="p-3 bg-neutral-950 border border-neutral-800 rounded text-[11px] text-neutral-500 leading-relaxed">
-          <span className="text-neutral-400 font-semibold">Immutable Fields: </span>
-          Authority type and parent hierarchy are immutable after registration to preserve the cryptographic audit trail. Re-parenting requires deletion and re-registration.
+          <span className="text-neutral-400 font-semibold">Note: </span>
+          Permission types and parent relationships cannot be changed after creation to preserve the audit trail. To modify them, you must delete and recreate the permission.
         </div>
       </div>
     </div>

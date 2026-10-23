@@ -84,6 +84,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
   };
 
   const publisherConfigured = capabilities?.receipt_publisher_configured ?? false;
+  const formattedStatus = receipt?.verification_status?.replace(/_/g, ' ') || '';
 
   return (
     <div className="space-y-5 max-w-4xl mx-auto">
@@ -92,7 +93,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold text-neutral-100">
-              Receipt & Verification Proof
+              Termination Receipt
             </h3>
             {receipt && (
               <span className="font-mono text-xs text-neutral-400">
@@ -101,7 +102,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
             )}
           </div>
           <p className="text-xs text-neutral-400 mt-0.5">
-            Cryptographic proof and termination receipt inspection for autonomous agents.
+            Cryptographic proof and audit record for agent termination.
           </p>
         </div>
 
@@ -113,29 +114,28 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded transition-colors shadow-xs"
           >
             <ShieldCheck size={14} />
-            <span>{isVerifying ? 'Verifying...' : 'Verify Cryptographic Integrity'}</span>
+            <span>{isVerifying ? 'Verifying...' : 'Verify Integrity'}</span>
           </button>
         )}
       </div>
 
       <ErrorBanner error={error} title="Receipt Query Failed" />
 
-      {/* Priority 4 Notice — Accurate Capability Reflection */}
+      {/* Capability Status Banner */}
       <div className="p-4 bg-neutral-900/60 border border-neutral-800 rounded-lg space-y-2 text-xs">
         <div className="flex items-center gap-2 text-neutral-200 font-semibold">
           <Info size={15} className="text-neutral-400" />
-          <span>Receipt Capability Status: Priority 4c Pending</span>
+          <span>Blockchain Publication Status</span>
         </div>
         <p className="text-neutral-400 leading-relaxed text-[11px]">
-          According to the Clean Exit specification and API contract, the on-chain receipt publisher contract is not yet active on this deployment.
-          When an agent finishes termination, an off-chain receipt with a SHA-256 canonical hash is stored in the database.
-          Clean Exit does not fabricate fake on-chain transaction hashes or public verification claims.
+          Clean Exit generates a SHA-256 canonical hash of this receipt. If the on-chain publisher is active, 
+          this hash is committed to the NEAR blockchain to serve as immutable proof.
         </p>
         <div className="flex items-center gap-4 pt-1 font-mono text-[11px]">
           <span className="text-neutral-500">
             On-Chain Publisher:{' '}
             <strong className={publisherConfigured ? 'text-emerald-400' : 'text-neutral-400'}>
-              {publisherConfigured ? 'Configured' : 'Not Configured (Expected)'}
+              {publisherConfigured ? 'Configured' : 'Not Configured'}
             </strong>
           </span>
           <span className="text-neutral-500">
@@ -159,7 +159,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
           </h4>
           <p className="text-xs text-neutral-500 max-w-md mx-auto">
             {receiptId
-              ? `Receipt ${receiptId} returned 404 (Priority 4c endpoint pending or receipt not found).`
+              ? `Receipt ${receiptId} was not found or has not been generated yet.`
               : 'Execute an agent termination to finalize and generate an auditable termination receipt.'}
           </p>
         </div>
@@ -170,7 +170,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
             <div className="flex items-center justify-between">
               <div>
                 <span className="text-[11px] text-neutral-500 uppercase font-mono tracking-wider">
-                  Authoritative Outcome
+                  Termination Outcome
                 </span>
                 <div className="mt-1">
                   <StatusBadge type="receipt" value={receipt.result} />
@@ -182,7 +182,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
                   Publication Status
                 </span>
                 <span className="font-mono text-xs text-neutral-400 capitalize">
-                  {receipt.verification_status.replace('_', ' ')}
+                  {formattedStatus}
                 </span>
               </div>
             </div>
@@ -208,9 +208,9 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
                 </span>
               </div>
               <div>
-                <span className="text-neutral-500 text-[11px] block">Schema Version</span>
+                <span className="text-neutral-500 text-[11px] block">Version</span>
                 <span className="font-mono text-neutral-300">
-                  v{receipt.schema_version}
+                  {receipt.schema_version}
                 </span>
               </div>
             </div>
@@ -218,7 +218,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
             {/* SHA-256 Payload Hash */}
             <div className="space-y-1 text-xs">
               <div className="flex items-center justify-between">
-                <span className="text-neutral-400 font-medium">Canonical Payload Hash (SHA-256)</span>
+                <span className="text-neutral-400 font-medium">Cryptographic Hash (SHA-256)</span>
                 <button
                   type="button"
                   onClick={() => copyHash(receipt.payload_hash)}
@@ -244,14 +244,14 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
 
             {/* On-chain commitment status */}
             <div className="p-3 bg-neutral-950/60 border border-neutral-800 rounded text-xs space-y-1">
-              <div className="text-neutral-400 font-medium">On-Chain Publication Commitment</div>
+              <div className="text-neutral-400 font-medium">Blockchain Commitment</div>
               {receipt.onchain_tx_hash ? (
                 <div className="font-mono text-[11px] text-emerald-400 break-all">
                   Tx: {receipt.onchain_tx_hash}
                 </div>
               ) : (
                 <div className="text-[11px] text-neutral-500">
-                  Off-chain storage only. On-chain registry publication is not configured on this deployment.
+                  This receipt is currently stored off-chain. Awaiting blockchain publication.
                 </div>
               )}
             </div>
@@ -260,7 +260,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
             <div className="space-y-1.5 pt-2">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-neutral-300">
-                  Canonical Receipt Payload
+                  Receipt Payload
                 </span>
                 <span className="font-mono text-[11px] text-neutral-500">
                   Immutable Record
@@ -281,19 +281,19 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
                     <XCircle size={16} className="text-rose-400" />
                   )}
                   <span className="font-bold text-neutral-100">
-                    {verifyResult.verified ? 'Cryptographic Integrity Verified' : 'Verification Mismatch'}
+                    {verifyResult.verified ? 'Integrity Verified' : 'Verification Mismatch'}
                   </span>
                 </div>
                 <span className="font-mono text-[11px] text-neutral-400">
-                  Status: {verifyResult.onchain_status}
+                  Status: {verifyResult.onchain_status.replace(/_/g, ' ')}
                 </span>
               </div>
 
               <div className="p-3 bg-neutral-950 rounded border border-neutral-800 text-[11px] text-neutral-400 space-y-1">
                 <p>
                   <strong>Verification Semantics: </strong>
-                  <code>verified: true</code> confirms that the off-chain receipt payload hash matches the cryptographic commitment.
-                  It does not mean all real-world permissions were destroyed outside Clean Exit.
+                  A successful verification confirms the receipt data exactly matches the cryptographic commitment on the blockchain.
+                  It does not guarantee that permissions outside this registry were revoked.
                 </p>
                 {verifyResult.notes && verifyResult.notes.length > 0 && (
                   <ul className="list-disc list-inside text-neutral-500 pt-1">

@@ -33,7 +33,14 @@ import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { CodeSnippet } from '../../components/common/CodeSnippet.tsx';
 import { RegisterAuthorityModal } from '../authorities/RegisterAuthorityModal.tsx';
 import { ConfirmTerminationModal } from '../termination/ConfirmTerminationModal.tsx';
-import { formatDateTime, getAuthorityTypeMeta, getJobPhaseMeta } from '../../lib/format.ts';
+import {
+  formatDateTime,
+  getAuthorityTypeMeta,
+  getJobPhaseMeta,
+  formatAuditAction,
+  formatTargetType,
+  getTerminationActionMeta,
+} from '../../lib/format.ts';
 
 interface AgentDetailsProps {
   agentId: string;
@@ -121,7 +128,6 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
       const jobs = await apiClient.listTerminationJobs(agentId);
       setJobHistory(jobs);
       if (jobs.length > 0) {
-        // If latest job is pending/running, set as activeJob
         const latest = jobs[0];
         if (latest.status === 'pending' || latest.status === 'running') {
           setActiveJob(latest);
@@ -297,7 +303,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
               title={
                 !signerReady
                   ? `Signer unavailable: ${capabilities?.signer_reason || 'Backend key not configured'}`
-                  : 'Terminate agent authorities'
+                  : 'Terminate agent permissions'
               }
               className="btn-danger"
             >
@@ -380,7 +386,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
             {/* Main Column: Status and Concise Authority Summary */}
             <div className="border border-[var(--border-subtle)] rounded-[var(--radius-md)] bg-[var(--bg-surface)] p-5 space-y-4">
               <h3 className="text-[15px] font-semibold text-[var(--text-primary)]">
-                Authority summary
+                Permission summary
               </h3>
 
               <div className="space-y-3 text-[13px]">
@@ -390,7 +396,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                 </div>
 
                 <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-secondary)]">Registered authorities</span>
+                  <span className="text-[var(--text-secondary)]">Registered permissions</span>
                   <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
                     {totalAuthCount}
                   </span>
@@ -419,7 +425,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                   onClick={() => setActiveTab('authority')}
                   className="text-[12px] font-medium text-[var(--accent)] hover:underline inline-flex items-center gap-1"
                 >
-                  <span>Manage authorities</span>
+                  <span>Manage permissions</span>
                   <ChevronRight size={13} />
                 </button>
               </div>
@@ -440,7 +446,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                 </div>
 
                 <div className="flex items-center justify-between py-1.5 border-b border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-secondary)]">Supported revocations</span>
+                  <span className="text-[var(--text-secondary)]">Automatic revocations</span>
                   <span className="font-mono text-[var(--text-primary)] font-medium tabular-nums">
                     {terminationPlan ? terminationPlan.supported_count : '—'}
                   </span>
@@ -459,7 +465,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                   <span className="text-[var(--text-secondary)] block text-[11px] mb-1">Latest activity</span>
                   {agentAudits.length > 0 ? (
                     <div className="text-[12px] text-[var(--text-primary)] font-mono">
-                      {agentAudits[0].action} · {formatDateTime(agentAudits[0].created_at).relative}
+                      {formatAuditAction(agentAudits[0].action)} · {formatDateTime(agentAudits[0].created_at).relative}
                     </div>
                   ) : (
                     <div className="text-[12px] text-[var(--text-muted)] italic">
@@ -516,7 +522,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
           {/* Sub-header with Register action and Graph View toggle */}
           <div className="flex items-center justify-between pb-2 border-b border-[var(--border-subtle)]">
             <div className="text-[13px] text-[var(--text-secondary)]">
-              {totalAuthCount} registered {totalAuthCount === 1 ? 'authority' : 'authorities'}
+              {totalAuthCount} registered {totalAuthCount === 1 ? 'permission' : 'permissions'}
             </div>
 
             <div className="flex items-center gap-3">
@@ -536,7 +542,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                 style={{ height: '32px' }}
               >
                 <Plus size={13} />
-                <span>Add authority</span>
+                <span>Add permission</span>
               </button>
             </div>
           </div>
@@ -546,10 +552,10 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
             <div className="p-3.5 rounded-[var(--radius-md)] bg-[var(--status-warning-bg)] border border-[var(--status-warning)]/30 text-[12px] text-[var(--status-warning)] space-y-1">
               <div className="font-medium flex items-center gap-1.5">
                 <AlertTriangle size={14} />
-                <span>Orphaned authorities detected ({authorityGraph.orphaned.length})</span>
+                <span>Orphaned permissions detected ({authorityGraph.orphaned.length})</span>
               </div>
               <p className="text-[11px] opacity-90 leading-normal">
-                These authorities reference a missing parent authority in the hierarchy. They are listed below for operator reconciliation.
+                These permissions reference a missing parent in the hierarchy. They are listed below for reconciliation.
               </p>
             </div>
           )}
@@ -559,7 +565,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
             <>
               {flatAuthorities.length === 0 ? (
                 <div className="p-10 text-center text-[13px] text-[var(--text-muted)] border border-[var(--border-subtle)] rounded-[var(--radius-md)] bg-[var(--bg-surface)] space-y-2">
-                  <p>No authorities registered yet.</p>
+                  <p>No permissions registered yet.</p>
                   <p className="text-[12px] text-[var(--text-muted)]">
                     This does not mean the agent has no permissions. Register known keys or verify supported on-chain state.
                   </p>
@@ -569,7 +575,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                     className="btn-secondary mt-3"
                   >
                     <Plus size={13} />
-                    <span>Register authority</span>
+                    <span>Register permission</span>
                   </button>
                 </div>
               ) : (
@@ -617,7 +623,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                         {isExpanded && (
                           <div className="pt-2 text-[12px] text-[var(--text-secondary)] border-t border-[var(--border-subtle)] space-y-2">
                             <div className="grid grid-cols-2 gap-2 text-[11px] font-mono">
-                              <div>Source: {auth.source}</div>
+                              <div>Origin: {auth.source}</div>
                               <div>Revocable: {auth.revocable ? 'Yes' : 'No'}</div>
                               <div>Parent ID: {auth.parent_id || 'None (Root)'}</div>
                               <div>Created: {formatDateTime(auth.created_at).local}</div>
@@ -642,7 +648,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
           {isGraphView && (
             <div className="p-6 rounded-[var(--radius-md)] bg-[var(--bg-app)] border border-[var(--border-subtle)] space-y-4">
               <div className="flex items-center justify-between text-[12px] text-[var(--text-muted)] pb-2 border-b border-[var(--border-subtle)]">
-                <span>Authority hierarchy</span>
+                <span>Permission hierarchy</span>
                 {/* Legend */}
                 <div className="flex items-center gap-4 text-[11px]">
                   <span className="flex items-center gap-1.5">
@@ -700,7 +706,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                 </div>
               ) : (
                 <div className="text-[12px] text-[var(--text-muted)] text-center py-6">
-                  No authority nodes to graph.
+                  No permission nodes to graph.
                 </div>
               )}
             </div>
@@ -775,7 +781,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                     </span>
                   </div>
                   <p className="text-[12px] opacity-90 leading-normal">
-                    {activeJob.reason || 'All registered authorities in scope were evaluated.'}
+                    {activeJob.reason || 'All registered permissions in scope were evaluated.'}
                   </p>
                   {activeJob.receipt_id && (
                     <div className="pt-1 text-[11px] font-mono text-[var(--text-primary)]">
@@ -796,7 +802,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                     Termination plan
                   </h3>
                   <p className="text-[12px] text-[var(--text-secondary)]">
-                    Pre-calculated post-order sequence (sub-authorities revoked before parents).
+                    Pre-calculated sequence (child permissions revoked before parents).
                   </p>
                 </div>
 
@@ -814,7 +820,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
               {/* Plan metrics */}
               <div className="grid grid-cols-3 gap-3 text-[12px]">
                 <div className="p-3 bg-[var(--bg-input)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-muted)] block text-[11px]">Supported revocations</span>
+                  <span className="text-[var(--text-muted)] block text-[11px]">Automatic revocations</span>
                   <span className="font-mono text-[18px] font-semibold text-[var(--status-success)]">
                     {terminationPlan.supported_count}
                   </span>
@@ -826,7 +832,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                   </span>
                 </div>
                 <div className="p-3 bg-[var(--bg-input)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
-                  <span className="text-[var(--text-muted)] block text-[11px]">Unsupported actions</span>
+                  <span className="text-[var(--text-muted)] block text-[11px]">Unsupported permissions</span>
                   <span className="font-mono text-[18px] font-semibold text-[var(--text-muted)]">
                     {terminationPlan.unsupported_count}
                   </span>
@@ -841,31 +847,37 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
 
                 {terminationPlan.steps.length === 0 ? (
                   <div className="text-[12px] text-[var(--text-muted)] py-4 text-center">
-                    No authorities in scope for this agent.
+                    No permissions in scope for this agent.
                   </div>
                 ) : (
                   <div className="border border-[var(--border-subtle)] rounded-[var(--radius-sm)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-app)]">
-                    {terminationPlan.steps.map((step) => (
-                      <div key={step.order} className="p-3 flex items-center justify-between text-[12px] gap-3">
-                        <div className="flex items-center gap-3">
-                          <span className="font-mono text-[11px] text-[var(--text-muted)] w-5 text-right">
-                            {step.order}.
-                          </span>
-                          <div>
-                            <span className="font-medium text-[var(--text-primary)] capitalize">
-                              {step.action.replace('_', ' ')}
-                            </span>
-                            <span className="font-mono text-[11px] text-[var(--text-secondary)] ml-2">
-                              {step.type}
-                            </span>
-                          </div>
-                        </div>
+                    {terminationPlan.steps.map((step) => {
+                      const actionMeta = getTerminationActionMeta(step.action);
+                      const typeMeta = getAuthorityTypeMeta(step.type);
+                      const supportLabel = step.support === 'supported' ? 'Automatic' : step.support === 'partial' ? 'Partial' : 'Unsupported';
 
-                        <span className="font-mono text-[11px] text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
-                          {step.support}
-                        </span>
-                      </div>
-                    ))}
+                      return (
+                        <div key={step.order} className="p-3 flex items-center justify-between text-[12px] gap-3">
+                          <div className="flex items-center gap-3">
+                            <span className="font-mono text-[11px] text-[var(--text-muted)] w-5 text-right">
+                              {step.order}.
+                            </span>
+                            <div>
+                              <span className="font-medium text-[var(--text-primary)]">
+                                {actionMeta.label}
+                              </span>
+                              <span className="font-mono text-[11px] text-[var(--text-secondary)] ml-2">
+                                {typeMeta.label}
+                              </span>
+                            </div>
+                          </div>
+
+                          <span className="font-mono text-[11px] text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
+                            {supportLabel}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -907,10 +919,10 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                     <div className="flex items-center justify-between">
                       <div className="flex items-center gap-2">
                         <span className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
-                          {event.action}
+                          {formatAuditAction(event.action)}
                         </span>
                         <span className="text-[var(--text-muted)] font-mono text-[11px]">
-                          ({event.target_type})
+                          ({formatTargetType(event.target_type)})
                         </span>
                       </div>
 
@@ -928,7 +940,7 @@ export function AgentDetails({ agentId, onBack, onNavigateToActivity }: AgentDet
                           }
                           className="text-[11px] text-[var(--text-muted)] hover:text-[var(--text-primary)]"
                         >
-                          {isExpanded ? 'Hide' : 'Payload'}
+                          {isExpanded ? 'Hide' : 'Details'}
                         </button>
                       </div>
                     </div>

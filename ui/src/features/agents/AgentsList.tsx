@@ -77,7 +77,7 @@ export function AgentsList({ onSelectAgent, onOpenRegisterModal }: AgentsListPro
             Agents
           </h1>
           <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-            Manage registered agents and their authority.
+            Manage registered agents and their permissions.
           </p>
         </div>
 
@@ -149,7 +149,7 @@ export function AgentsList({ onSelectAgent, onOpenRegisterModal }: AgentsListPro
           description={
             searchQuery || statusFilter !== 'all'
               ? 'Try modifying your search query or lifecycle status filter.'
-              : 'Register a NEAR agent to inspect its authority and manage termination.'
+              : 'Register a NEAR agent to inspect its permissions and manage termination.'
           }
           action={
             !searchQuery && statusFilter === 'all' ? (

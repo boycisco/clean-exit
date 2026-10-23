@@ -15,7 +15,7 @@ import { StatusBadge } from '../../components/common/StatusBadge.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { apiClient } from '../../lib/api-client.ts';
 import type { VerifyResponse } from '../../types/api.ts';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, getAuthorityStateMeta } from '../../lib/format.ts';
 
 interface VerificationModalProps {
   isOpen: boolean;
@@ -67,7 +67,7 @@ export function VerificationModal({
         onClose();
       }}
       title="Verify Authority On-Chain"
-      subtitle={`Read-only cryptographic reconciliation for agent "${agentName}".`}
+      subtitle={`Read-only verification against the NEAR blockchain for agent "${agentName}".`}
       maxWidth="xl"
       footer={
         <div className="flex items-center justify-between w-full">
@@ -114,7 +114,7 @@ export function VerificationModal({
               </div>
             </div>
             <p className="text-neutral-400 leading-relaxed">
-              Clean Exit will query the NEAR RPC for registered keys associated with this account.
+              Clean Exit will check the NEAR blockchain for permissions associated with this account.
               State will only be updated for confirmed checks.
             </p>
           </div>
@@ -124,7 +124,7 @@ export function VerificationModal({
           <div className="p-8 text-center space-y-3">
             <div className="w-6 h-6 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin mx-auto" />
             <div className="text-sm font-medium text-neutral-200">
-              Querying NEAR RPC & Reconciling Access Keys...
+              Checking the NEAR blockchain...
             </div>
             <p className="text-xs text-neutral-400">
               Inspecting on-chain public keys and matching against registered inventory.
@@ -165,7 +165,7 @@ export function VerificationModal({
                 </div>
                 <p className="text-amber-300/90 leading-relaxed">{result.error}</p>
                 <p className="text-[11px] text-amber-400/80">
-                  Authority statuses have NOT been modified because the RPC check was inconclusive.
+                  Statuses have NOT been modified because the blockchain check was inconclusive.
                 </p>
               </div>
             )}
@@ -198,9 +198,13 @@ export function VerificationModal({
                       <div className="flex items-center gap-3 text-[11px] text-neutral-400 pt-1 border-t border-neutral-800/60">
                         <div className="flex items-center gap-1.5">
                           <span>Transition:</span>
-                          <span className="font-mono text-neutral-400">{v.previous_state}</span>
+                          <span className="font-mono text-neutral-400">
+                            {getAuthorityStateMeta(v.previous_state).label}
+                          </span>
                           <ArrowRight size={10} className="text-neutral-600" />
-                          <span className="font-mono font-medium text-emerald-400">{v.new_state}</span>
+                          <span className="font-mono font-medium text-emerald-400">
+                            {getAuthorityStateMeta(v.new_state).label}
+                          </span>
                         </div>
                         <span className="text-neutral-600">·</span>
                         <div className="text-neutral-400">{v.detail}</div>
@@ -216,7 +220,7 @@ export function VerificationModal({
               <div className="space-y-2 pt-2">
                 <h4 className="text-xs font-semibold text-neutral-400 flex items-center justify-between">
                   <span>Skipped or Unsupported ({result.skipped.length})</span>
-                  <span className="text-[11px] text-neutral-500 font-mono">on_chain: null</span>
+                  <span className="text-[11px] text-neutral-500 font-mono">Could not verify</span>
                 </h4>
                 <div className="space-y-2">
                   {result.skipped.map((s) => (

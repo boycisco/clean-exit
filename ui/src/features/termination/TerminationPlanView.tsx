@@ -15,7 +15,7 @@ import { useConnection } from '../../context/ConnectionContext.tsx';
 import type { TerminationPlan, TerminationStep } from '../../types/api.ts';
 import { EmptyState } from '../../components/common/EmptyState.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
-import { getTerminationActionMeta, truncateString } from '../../lib/format.ts';
+import { getTerminationActionMeta, getAuthorityTypeMeta, truncateString } from '../../lib/format.ts';
 
 interface TerminationPlanViewProps {
   agentId: string;
@@ -57,6 +57,18 @@ export function TerminationPlanView({
   const signerAvailable = capabilities?.signer_configured ?? false;
   const isAgentTerminal = agentStatus === 'clean' || agentStatus === 'failed';
 
+  const getSupportLabel = (support: string) => {
+    if (support === 'supported') return 'Automatic';
+    if (support === 'partial') return 'Partial';
+    return 'Unsupported';
+  };
+
+  const getSupportColor = (support: string) => {
+    if (support === 'supported') return 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60';
+    if (support === 'partial') return 'bg-amber-950/60 text-amber-300 border border-amber-800/60';
+    return 'bg-neutral-800 text-neutral-400 border border-neutral-700';
+  };
+
   return (
     <div className="space-y-5">
       {/* Action Header */}
@@ -64,7 +76,7 @@ export function TerminationPlanView({
         <div>
           <h3 className="text-base font-bold text-neutral-100">Termination Plan</h3>
           <p className="text-xs text-neutral-400">
-            Pre-flight dry-run of destruction and revocation steps (post-order dependency traversal).
+            Preview the actions required to safely terminate this agent.
           </p>
         </div>
 
@@ -76,7 +88,7 @@ export function TerminationPlanView({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-300 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded transition-colors disabled:opacity-50"
           >
             <RefreshCw size={13} className={isLoading ? 'animate-spin' : ''} />
-            <span>Recalculate Plan</span>
+            <span>Recalculate</span>
           </button>
 
           <button
@@ -106,11 +118,10 @@ export function TerminationPlanView({
           <ShieldAlert size={16} className="text-amber-400 shrink-0 mt-0.5" />
           <div className="space-y-1">
             <div className="font-semibold text-amber-100">
-              Signer Not Configured — Destructive Revocation Disabled
+              Signer Not Configured — Automatic Revocation Disabled
             </div>
             <p className="text-amber-300/90 leading-relaxed">
-              Reason: <code className="font-mono">{capabilities?.signer_reason || 'signer_unavailable'}</code>.
-              The termination plan is inspectable, but Clean Exit cannot submit NEAR key deletion transactions until an operator loads credentials.
+              You can view the plan, but Clean Exit cannot execute on-chain deletions until the server operator loads the signing credentials.
             </p>
           </div>
         </div>
@@ -118,7 +129,7 @@ export function TerminationPlanView({
 
       {isLoading ? (
         <div className="p-12 text-center text-xs text-neutral-500 bg-neutral-900/30 border border-neutral-800 rounded-lg">
-          Analyzing authority tree and calculating post-order execution plan...
+          Analyzing registered permissions and building execution plan...
         </div>
       ) : !plan ? (
         <EmptyState
@@ -131,28 +142,28 @@ export function TerminationPlanView({
           {/* Metrics Overview Strip */}
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div className="p-3 bg-neutral-900/60 border border-neutral-800 rounded-lg">
-              <span className="text-[11px] text-neutral-500 block">Total Authorities</span>
+              <span className="text-[11px] text-neutral-500 block">Total Permissions</span>
               <span className="text-xl font-bold font-mono tabular-nums text-neutral-100">
                 {plan.total_authorities}
               </span>
             </div>
 
             <div className="p-3 bg-neutral-900/60 border border-neutral-800 rounded-lg">
-              <span className="text-[11px] text-neutral-500 block">Supported Actions</span>
+              <span className="text-[11px] text-neutral-500 block">Automatic Actions</span>
               <span className="text-xl font-bold font-mono tabular-nums text-emerald-400">
                 {plan.supported_count}
               </span>
             </div>
 
             <div className="p-3 bg-neutral-900/60 border border-neutral-800 rounded-lg">
-              <span className="text-[11px] text-neutral-500 block">Unsupported Actions</span>
+              <span className="text-[11px] text-neutral-500 block">Unsupported Types</span>
               <span className="text-xl font-bold font-mono tabular-nums text-neutral-400">
                 {plan.unsupported_count}
               </span>
             </div>
 
             <div className="p-3 bg-neutral-900/60 border border-neutral-800 rounded-lg">
-              <span className="text-[11px] text-neutral-500 block">Manual Operator Tasks</span>
+              <span className="text-[11px] text-neutral-500 block">Manual Tasks</span>
               <span className="text-xl font-bold font-mono tabular-nums text-amber-400">
                 {plan.manual_count}
               </span>
@@ -164,7 +175,7 @@ export function TerminationPlanView({
             <div className="p-3.5 bg-neutral-950 border border-neutral-800 rounded-lg text-xs space-y-1.5">
               <div className="font-semibold text-neutral-300 flex items-center gap-1.5">
                 <Info size={14} className="text-neutral-400" />
-                <span>Backend Plan Notes</span>
+                <span>Plan Notes</span>
               </div>
               <ul className="text-neutral-400 space-y-1 list-disc list-inside">
                 {plan.notes.map((note, i) => (
@@ -174,20 +185,20 @@ export function TerminationPlanView({
             </div>
           )}
 
-          {/* Post-Order Steps Table */}
+          {/* Steps Table */}
           <div className="space-y-2">
             <div className="flex items-center justify-between px-1">
               <h4 className="text-xs font-semibold text-neutral-200">
-                Ordered Execution Sequence ({plan.steps.length} steps)
+                Execution Sequence ({plan.steps.length} steps)
               </h4>
               <span className="text-[11px] text-neutral-500">
-                Sub-delegations executed before parent authorities
+                Child permissions are removed before their parents
               </span>
             </div>
 
             {plan.steps.length === 0 ? (
               <div className="p-8 text-center text-xs text-neutral-500 bg-neutral-900/30 border border-neutral-800 rounded-lg">
-                No authorities in scope. A termination request will produce a clean or empty receipt.
+                No permissions in scope. A termination request will produce an empty receipt.
               </div>
             ) : (
               <div className="border border-neutral-800 rounded-lg overflow-hidden bg-neutral-900/40">
@@ -197,15 +208,19 @@ export function TerminationPlanView({
                       <tr className="border-b border-neutral-800 bg-neutral-950/60 text-neutral-400 font-medium">
                         <th className="py-2.5 px-3 w-12 text-center">#</th>
                         <th className="py-2.5 px-4">Action</th>
-                        <th className="py-2.5 px-4">Type & Resource</th>
+                        <th className="py-2.5 px-4">Permission</th>
                         <th className="py-2.5 px-4">Support</th>
-                        <th className="py-2.5 px-4">Authorization</th>
-                        <th className="py-2.5 px-4">Verification Procedure</th>
+                        <th className="py-2.5 px-4">Required Access</th>
+                        <th className="py-2.5 px-4">Verification</th>
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-neutral-800/60 font-normal">
                       {plan.steps.map((step) => {
                         const actionMeta = getTerminationActionMeta(step.action);
+                        const typeMeta = getAuthorityTypeMeta(step.type);
+                        const supportLabel = getSupportLabel(step.support);
+                        const supportColor = getSupportColor(step.support);
+
                         return (
                           <tr key={step.order} className="hover:bg-neutral-800/30">
                             <td className="py-3 px-3 text-center font-mono text-neutral-500 tabular-nums">
@@ -221,23 +236,15 @@ export function TerminationPlanView({
                             </td>
                             <td className="py-3 px-4">
                               <div className="font-mono text-neutral-300">
-                                {step.type}
+                                {typeMeta.label}
                               </div>
                               <div className="font-mono text-[11px] text-neutral-500 truncate max-w-xs">
                                 {truncateString(step.resource, 28)}
                               </div>
                             </td>
                             <td className="py-3 px-4">
-                              <span
-                                className={`px-2 py-0.5 rounded text-[11px] font-mono ${
-                                  step.support === 'supported'
-                                    ? 'bg-emerald-950/60 text-emerald-300 border border-emerald-800/60'
-                                    : step.support === 'partial'
-                                    ? 'bg-amber-950/60 text-amber-300 border border-amber-800/60'
-                                    : 'bg-neutral-800 text-neutral-400 border border-neutral-700'
-                                }`}
-                              >
-                                {step.support}
+                              <span className={`px-2 py-0.5 rounded text-[11px] font-mono ${supportColor}`}>
+                                {supportLabel}
                               </span>
                             </td>
                             <td className="py-3 px-4 text-neutral-400 font-mono text-[11px]">

@@ -61,6 +61,15 @@ export function ConfirmTerminationModal({
 
   const signerReady = capabilities?.signer_configured ?? false;
 
+  // Translate raw signer_reason
+  const getSignerReason = () => {
+    const reasonStr = capabilities?.signer_reason || '';
+    if (reasonStr === 'signer_unavailable') return 'Signing key not loaded';
+    if (reasonStr === 'signer_invalid') return 'Signing key is invalid';
+    if (reasonStr === 'mainnet_signing_forbidden_in_non_production') return 'Mainnet signing disabled';
+    return reasonStr || 'Backend key not configured';
+  };
+
   return (
     <Modal
       isOpen={isOpen}
@@ -92,19 +101,20 @@ export function ConfirmTerminationModal({
         <ErrorBanner error={error} title="Termination request failed" />
 
         <p className="text-[13px] text-[var(--text-secondary)] leading-relaxed">
-          This will attempt to revoke supported authority associated with this agent. Some permissions may require manual action or remain outside the registered inventory.
+          This will attempt to revoke supported permissions associated with this agent. 
+          Some permissions may require manual action or remain outside the registered inventory.
         </p>
 
         {/* Action Category Summary: omit empty categories */}
         <div className="p-3.5 rounded-[var(--radius-md)] bg-[var(--bg-input)] border border-[var(--border-subtle)] space-y-2 text-[12px]">
           <div className="font-medium text-[var(--text-primary)]">
-            Plan summary
+            Plan Summary
           </div>
 
           <div className="space-y-1.5 text-[var(--text-secondary)]">
             {supportedCount > 0 && (
               <div className="flex items-center justify-between">
-                <span>Supported revocations:</span>
+                <span>Automatic revocations:</span>
                 <span className="font-mono text-[var(--status-success)] font-medium">
                   {supportedCount}
                 </span>
@@ -120,7 +130,7 @@ export function ConfirmTerminationModal({
             )}
             {unsupportedCount > 0 && (
               <div className="flex items-center justify-between">
-                <span>Unsupported authorities:</span>
+                <span>Unsupported permissions:</span>
                 <span className="font-mono text-[var(--text-muted)] font-medium">
                   {unsupportedCount}
                 </span>
@@ -128,7 +138,7 @@ export function ConfirmTerminationModal({
             )}
             {supportedCount === 0 && manualCount === 0 && unsupportedCount === 0 && (
               <div className="text-[12px] text-[var(--text-muted)] italic">
-                No registered authorities in scope. A blank termination job will be issued.
+                No registered permissions found. A clean termination receipt will be generated.
               </div>
             )}
           </div>
@@ -152,7 +162,7 @@ export function ConfirmTerminationModal({
 
         {!signerReady && (
           <div className="text-[12px] text-[var(--status-warning)] bg-[var(--status-warning-bg)] p-2.5 rounded-[var(--radius-sm)] border border-[var(--status-warning)]/20 leading-normal">
-            Signer unavailable: {capabilities?.signer_reason || 'Backend key not configured'}. Destructive revocation cannot proceed.
+            Signing unavailable: {getSignerReason()}. Automatic revocation cannot proceed.
           </div>
         )}
       </div>

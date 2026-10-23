@@ -122,6 +122,16 @@ export function TerminationExecution({
   const currentPhaseIndex = PHASES_ORDERED.indexOf(job.phase);
   const canRetry = job.status === 'failed' || job.status === 'partial';
 
+  // Safely render the error object returned by the backend
+  const renderError = (err: unknown) => {
+    if (!err) return null;
+    if (typeof err === 'string') return err;
+    if (typeof err === 'object' && err !== null && 'message' in err) {
+      return String((err as Record<string, unknown>).message);
+    }
+    return JSON.stringify(err);
+  };
+
   return (
     <div className="space-y-6 max-w-4xl mx-auto">
       {/* Execution Header */}
@@ -129,7 +139,7 @@ export function TerminationExecution({
         <div>
           <div className="flex items-center gap-2">
             <h3 className="text-base font-bold text-neutral-100">
-              Termination Execution
+              Termination Progress
             </h3>
             <span className="font-mono text-xs text-neutral-400">
               Job ID: {job.id.slice(0, 8)}...
@@ -158,7 +168,7 @@ export function TerminationExecution({
               className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-300 hover:text-white bg-amber-950/60 hover:bg-amber-900 border border-amber-800/80 rounded transition-colors shadow-xs"
             >
               <RotateCw size={13} />
-              <span>Retry Incomplete Job</span>
+              <span>Retry Job</span>
             </button>
           )}
 
@@ -168,7 +178,7 @@ export function TerminationExecution({
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs text-neutral-300 hover:text-white bg-neutral-900 hover:bg-neutral-800 border border-neutral-800 rounded transition-colors"
           >
             <RefreshCw size={13} className={isPolling ? 'animate-spin' : ''} />
-            <span>{isPolling ? 'Polling Status...' : 'Refresh'}</span>
+            <span>{isPolling ? 'Refreshing...' : 'Refresh'}</span>
           </button>
         </div>
       </div>
@@ -216,7 +226,7 @@ export function TerminationExecution({
                 <div className="font-mono text-[10px] text-neutral-500 mb-0.5">
                   0{idx + 1}
                 </div>
-                <div className="font-semibold capitalize truncate">{p.replace('_', ' ')}</div>
+                <div className="font-semibold truncate">{getJobPhaseMeta(p).label}</div>
               </div>
             );
           })}
@@ -277,15 +287,15 @@ export function TerminationExecution({
               Clean Exit does not claim that permissions outside this registry have been revoked.
             </p>
             {job.error && (
-              <p className="text-rose-300 font-mono bg-rose-950/60 p-2 rounded border border-rose-900/60 mt-2">
-                Error Detail: {job.error}
+              <p className="text-rose-300 font-mono bg-rose-950/60 p-2 rounded border border-rose-900/60 mt-2 whitespace-pre-wrap">
+                Error Detail: {renderError(job.error)}
               </p>
             )}
           </div>
         </div>
       )}
 
-      {/* Execution Diagnostics Strip */}
+      {/* Execution Details Strip */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 p-4 bg-neutral-900/60 border border-neutral-800 rounded-lg text-xs">
         <div>
           <span className="text-neutral-500 text-[11px] block">Requested Time</span>
@@ -318,7 +328,7 @@ export function TerminationExecution({
         isOpen={isRetryConfirmOpen}
         onClose={() => setIsRetryConfirmOpen(false)}
         title="Retry Termination Job"
-        subtitle={`Resume execution for job ${job.id}.`}
+        subtitle={`Resume execution for job ${job.id.slice(0, 8)}.`}
         maxWidth="sm"
         footer={
           <>
@@ -348,7 +358,7 @@ export function TerminationExecution({
           <div className="p-3 bg-neutral-950 border border-neutral-800 rounded font-mono text-[11px] text-neutral-400">
             • Resets retry count to 0<br />
             • Skips already revoked keys to avoid redundant on-chain transactions<br />
-            • Re-evaluates post-order queue
+            • Re-evaluates dependency order
           </div>
         </div>
       </Modal>

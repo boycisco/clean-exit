@@ -123,7 +123,7 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
                   toggleCollapse(authority.id);
                 }}
                 className="p-0.5 text-neutral-400 hover:text-white rounded"
-                aria-label={isCollapsed ? 'Expand child delegations' : 'Collapse child delegations'}
+                aria-label={isCollapsed ? 'Expand child permissions' : 'Collapse child permissions'}
               >
                 {isCollapsed ? <ChevronRight size={14} /> : <ChevronDown size={14} />}
               </button>
@@ -148,7 +148,7 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
               <div className="text-[11px] text-neutral-500 flex items-center gap-2 mt-0.5">
                 <span>Provider: {authority.provider}</span>
                 <span>·</span>
-                <span>Source: {authority.source}</span>
+                <span>Origin: {authority.source}</span>
                 <span>·</span>
                 <span>{authority.revocable ? 'Revocable' : 'Irrevocable'}</span>
               </div>
@@ -178,9 +178,9 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
       {/* Action Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-800">
         <div>
-          <h3 className="text-base font-bold text-neutral-100">Authority Graph</h3>
+          <h3 className="text-base font-bold text-neutral-100">Permission Graph</h3>
           <p className="text-xs text-neutral-400">
-            Hierarchical map of cryptographic keys, delegations, and operational permissions.
+            Hierarchical map of keys, child agents, and operational permissions.
           </p>
         </div>
 
@@ -200,7 +200,7 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
             className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-neutral-200 hover:text-white bg-neutral-800 hover:bg-neutral-700 border border-neutral-700 rounded transition-colors"
           >
             <ShieldCheck size={14} className="text-emerald-400" />
-            <span>Verify On-Chain</span>
+            <span>Verify Blockchain</span>
           </button>
           <button
             type="button"
@@ -208,32 +208,32 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
             className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded transition-colors shadow-xs"
           >
             <Plus size={14} />
-            <span>Register Authority</span>
+            <span>Register Permission</span>
           </button>
         </div>
       </div>
 
-      <ErrorBanner error={error} title="Failed to Load Authority Graph" />
+      <ErrorBanner error={error} title="Failed to Load Permission Graph" />
 
       {/* Scope Disclaimer Banner */}
       <div className="p-3 bg-neutral-900/60 border border-neutral-800 rounded-lg text-xs text-neutral-400 flex items-start gap-2.5">
         <Info size={15} className="text-neutral-400 shrink-0 mt-0.5" />
         <p className="leading-relaxed">
-          The authority graph displays permissions registered in Clean Exit or discovered during scanning.
-          An empty tree indicates no authorities have been registered yet; it does not constitute proof that the agent possesses no on-chain keys.
+          This graph displays permissions registered in Clean Exit or discovered during scanning.
+          An empty tree indicates no permissions have been registered yet; it does not constitute proof that the agent possesses no on-chain keys.
         </p>
       </div>
 
       {/* Graph Content */}
       {isLoading ? (
         <div className="p-12 text-center text-xs text-neutral-500 bg-neutral-900/30 border border-neutral-800 rounded-lg">
-          Loading authority graph hierarchy...
+          Loading permission hierarchy...
         </div>
       ) : !graphData || (graphData.roots.length === 0 && graphData.orphaned.length === 0) ? (
         <EmptyState
           icon={Network}
-          title="No authorities registered yet"
-          description="This does not mean the agent has no permissions. Register known authorities or verify supported on-chain state to establish an inventory."
+          title="No permissions registered yet"
+          description="This does not mean the agent has no permissions. Register known permissions or verify supported on-chain state to establish an inventory."
           warningNote="Clean Exit never assumes absence without proof. Register access keys, scheduled jobs, or external credentials to plan a clean exit."
           action={
             <div className="flex items-center gap-2">
@@ -243,7 +243,7 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
                 className="flex items-center gap-1.5 px-3.5 py-2 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 rounded transition-colors"
               >
                 <Plus size={14} />
-                <span>Register Authority</span>
+                <span>Register Permission</span>
               </button>
               <button
                 type="button"
@@ -251,22 +251,22 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
                 className="flex items-center gap-1.5 px-3.5 py-2 text-xs text-neutral-300 hover:text-white bg-neutral-800 hover:bg-neutral-700 rounded transition-colors"
               >
                 <ShieldCheck size={14} className="text-emerald-400" />
-                <span>Run On-Chain Verification</span>
+                <span>Run Verification</span>
               </button>
             </div>
           }
         />
       ) : (
         <div className="space-y-4">
-          {/* Orphaned Authorities Warning Section (Mandatory from Section 10) */}
+          {/* Orphaned Permissions Warning Section */}
           {graphData.orphaned.length > 0 && (
             <div className="p-4 bg-amber-950/20 border border-amber-900/50 rounded-lg space-y-3">
               <div className="flex items-center gap-2 text-amber-300 font-semibold text-xs">
                 <AlertTriangle size={15} className="text-amber-400" />
-                <span>Orphaned Authorities ({graphData.orphaned.length})</span>
+                <span>Orphaned Permissions ({graphData.orphaned.length})</span>
               </div>
               <p className="text-[11px] text-amber-300/80 leading-relaxed">
-                These authorities reference a <code className="font-mono">parent_id</code> that no longer exists in the database.
+                These permissions reference a missing parent that no longer exists in the database.
                 Clean Exit isolates them here rather than hiding malformed hierarchy.
               </p>
 
@@ -284,7 +284,7 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
                           {getAuthorityTypeMeta(orphan.type).label}
                         </div>
                         <div className="font-mono text-[11px] text-neutral-400">
-                          {truncateString(orphan.resource, 32)} (missing parent: {orphan.parent_id})
+                          {truncateString(orphan.resource, 32)} (missing parent)
                         </div>
                       </div>
                     </div>
@@ -295,12 +295,12 @@ export function AuthorityGraph({ agentId, agentName, nearAccount }: AuthorityGra
             </div>
           )}
 
-          {/* Root Authorities Tree */}
+          {/* Root Permissions Tree */}
           <div className="space-y-2">
             <div className="text-xs font-semibold text-neutral-400 flex items-center justify-between px-1">
-              <span>Authority Hierarchy ({graphData.roots.length} root chains)</span>
+              <span>Permission Hierarchy ({graphData.roots.length} root chains)</span>
               <span className="text-[11px] text-neutral-500 font-mono">
-                Post-order traversal order
+                Execution order (children before parents)
               </span>
             </div>
 

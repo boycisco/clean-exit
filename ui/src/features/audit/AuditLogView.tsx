@@ -6,16 +6,13 @@ import {
   ChevronRight,
   ChevronDown,
   ChevronUp,
-  User,
-  Clock,
-  Shield,
 } from 'lucide-react';
 import { apiClient } from '../../lib/api-client.ts';
 import type { AuditEvent } from '../../types/api.ts';
 import { EmptyState } from '../../components/common/EmptyState.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { CodeSnippet } from '../../components/common/CodeSnippet.tsx';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, formatAuditAction, formatTargetType } from '../../lib/format.ts';
 
 interface AuditLogViewProps {
   agentId: string;
@@ -126,11 +123,13 @@ export function AuditLogView({ agentId, agentName }: AuditLogViewProps) {
                         </td>
                         <td className="py-3 px-4">
                           <span className="font-mono font-semibold text-neutral-200 bg-neutral-950 px-2 py-0.5 rounded border border-neutral-800">
-                            {evt.action}
+                            {formatAuditAction(evt.action)}
                           </span>
                         </td>
                         <td className="py-3 px-4">
-                          <div className="font-mono text-neutral-300">{evt.target_type}</div>
+                          <div className="font-mono text-neutral-300">
+                            {formatTargetType(evt.target_type || '')}
+                          </div>
                           <div className="font-mono text-[11px] text-neutral-500 truncate max-w-xs">
                             {evt.target_id}
                           </div>
@@ -170,7 +169,7 @@ export function AuditLogView({ agentId, agentName }: AuditLogViewProps) {
                           <td colSpan={6} className="p-4 border-t border-neutral-800/80">
                             <div className="space-y-1.5">
                               <div className="text-[11px] font-semibold text-neutral-400 uppercase tracking-wider font-mono">
-                                Event Payload (Sanitized)
+                                Event Details
                               </div>
                               <CodeSnippet code={evt.payload} maxHeight="max-h-60" />
                             </div>

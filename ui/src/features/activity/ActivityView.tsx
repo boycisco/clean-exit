@@ -5,7 +5,7 @@ import type { Agent, AuditEvent } from '../../types/api.ts';
 import { EmptyState } from '../../components/common/EmptyState.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { CodeSnippet } from '../../components/common/CodeSnippet.tsx';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatAuditAction, formatTargetType, formatDateTime } from '../../lib/format.ts';
 
 interface ActivityViewProps {
   onSelectAgent: (agentId: string) => void;
@@ -101,7 +101,7 @@ export function ActivityView({ onSelectAgent }: ActivityViewProps) {
                   <div className="space-y-0.5 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
-                        {event.action}
+                        {formatAuditAction(event.action)}
                       </span>
                       <span className="text-[var(--text-muted)]">·</span>
                       <button
@@ -119,7 +119,7 @@ export function ActivityView({ onSelectAgent }: ActivityViewProps) {
 
                   <div className="flex items-center gap-3 shrink-0">
                     <span className="font-mono text-[11px] text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
-                      {event.target_type}
+                      {formatTargetType(event.target_type || '')}
                     </span>
 
                     <button
@@ -141,7 +141,7 @@ export function ActivityView({ onSelectAgent }: ActivityViewProps) {
                 {isExpanded && (
                   <div className="pt-2 border-t border-[var(--border-subtle)] space-y-2">
                     <div className="text-[11px] font-medium text-[var(--text-muted)] uppercase tracking-wider font-mono">
-                      Event payload
+                      Event Details
                     </div>
                     <CodeSnippet code={event.payload} maxHeight="max-h-48" />
                   </div>

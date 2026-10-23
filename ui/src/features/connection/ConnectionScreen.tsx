@@ -22,12 +22,12 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
     const cleanUrl = baseUrlInput.trim().replace(/\/+$/, '');
 
     if (!cleanToken) {
-      setLocalError(new Error('Clean Exit API token is required.'));
+      setLocalError(new Error('Access Token is required.'));
       return;
     }
 
     if (!cleanUrl) {
-      setLocalError(new Error('Backend API URL is required.'));
+      setLocalError(new Error('Server Address is required.'));
       return;
     }
 
@@ -58,10 +58,10 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
             </span>
           </div>
           <h1 className="text-[22px] font-semibold text-[var(--text-primary)] tracking-tight">
-            Connect to backend
+            Connect to Clean Exit
           </h1>
           <p className="text-[13px] text-[var(--text-secondary)] leading-normal">
-            Configure your Clean Exit backend endpoint and bearer token.
+            Enter your Clean Exit server details to continue.
           </p>
         </div>
 
@@ -70,7 +70,7 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
               <label htmlFor="base-url" className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider block">
-                Backend API base URL
+                Server Address
               </label>
               <input
                 id="base-url"
@@ -82,13 +82,13 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
                 required
               />
               <p className="text-[11px] text-[var(--text-muted)]">
-                Local default: http://127.0.0.1:8000
+                Default local server: http://127.0.0.1:8000
               </p>
             </div>
 
             <div className="space-y-1">
               <label htmlFor="api-token" className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider block">
-                Clean Exit API token
+                Access Token
               </label>
               <input
                 id="api-token"
@@ -101,7 +101,7 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
                 autoComplete="off"
               />
               <p className="text-[11px] text-[var(--text-muted)]">
-                Prefix: ce_ · Tokens are held only in session memory.
+                Your token is kept securely in memory and never saved to disk.
               </p>
             </div>
 
@@ -118,16 +118,16 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
               disabled={isSubmitting}
               className="btn-primary w-full"
             >
-              {isSubmitting ? 'Verifying connection...' : 'Connect session'}
+              {isSubmitting ? 'Verifying connection...' : 'Connect'}
             </button>
           </form>
 
           <div className="p-3 bg-[var(--bg-app)] rounded-[var(--radius-sm)] border border-[var(--border-subtle)] text-[12px] text-[var(--text-muted)] space-y-1">
             <span className="text-[var(--text-secondary)] font-medium block">
-              Security note
+              Security
             </span>
             <p className="leading-relaxed">
-              Clean Exit derives agent ownership exclusively from your issued token. Tokens are never written to permanent disk storage or transmitted outside your configured backend.
+              Your access token determines which agents you can see and manage. It is never transmitted to any third-party service.
             </p>
           </div>
         </div>

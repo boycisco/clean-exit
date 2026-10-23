@@ -8,6 +8,7 @@ import type {
   AuthorityType,
   AuthoritySource,
 } from '../../types/api.ts';
+import { getAuthorityTypeMeta } from '../../lib/format.ts';
 
 interface RegisterAuthorityModalProps {
   isOpen: boolean;
@@ -125,7 +126,7 @@ export function RegisterAuthorityModal({
 
         <div className="p-3 bg-[var(--status-warning-bg)] border border-[var(--status-warning)]/20 rounded-[var(--radius-sm)] text-[12px] text-[var(--status-warning)] leading-normal">
           <span className="font-semibold">Notice: </span>
-          Newly registered authorities begin with status <code className="font-mono">unverified</code>. Registration does not confirm on-chain presence until verified.
+          Newly registered permissions begin as <code className="font-mono">Unverified</code>. Registration does not confirm on-chain presence until you run a verification check.
         </div>
 
         {/* Authority Type */}
@@ -145,12 +146,12 @@ export function RegisterAuthorityModal({
             }}
             className="w-full h-10 px-3 rounded-[6px] bg-[var(--bg-input)] border border-[var(--border-default)] text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--focus-ring)] transition-colors"
           >
-            <option value="near_function_key">NEAR Function Call Key (ed25519)</option>
-            <option value="contract_allowance">Contract Gas / Token Allowance</option>
-            <option value="scheduled_job">Scheduled Job / Cron</option>
-            <option value="external_credential">External API Credential</option>
-            <option value="obligation">Financial / Settlement Obligation</option>
-            <option value="child_delegation">Child Agent Sub-Delegation</option>
+            <option value="near_function_key">NEAR Access Key</option>
+            <option value="contract_allowance">Contract Allowance</option>
+            <option value="scheduled_job">Scheduled Job</option>
+            <option value="external_credential">External Credential</option>
+            <option value="obligation">Pending Obligation</option>
+            <option value="child_delegation">Child Agent</option>
           </select>
         </div>
 
@@ -173,7 +174,7 @@ export function RegisterAuthorityModal({
         {/* Resource */}
         <div className="space-y-1">
           <label htmlFor="auth-resource" className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider block">
-            Resource identifier <span className="text-[var(--status-danger)]">*</span>
+            Resource ID <span className="text-[var(--status-danger)]">*</span>
           </label>
           <input
             id="auth-resource"
@@ -205,7 +206,7 @@ export function RegisterAuthorityModal({
               <option value="">None (Root authority)</option>
               {existingAuthorities.map((auth) => (
                 <option key={auth.id} value={auth.id}>
-                  {auth.type} — {auth.resource.slice(0, 24)}...
+                  {getAuthorityTypeMeta(auth.type).label} — {auth.resource.slice(0, 24)}...
                 </option>
               ))}
             </select>
@@ -232,15 +233,15 @@ export function RegisterAuthorityModal({
             onClick={() => setShowJsonFields(!showJsonFields)}
             className="text-[12px] text-[var(--text-muted)] hover:text-[var(--text-primary)] transition-colors underline"
           >
-            {showJsonFields ? 'Hide scope & metadata' : 'Configure scope & metadata (JSON)'}
+            {showJsonFields ? 'Hide advanced options' : 'Advanced Options (Optional)'}
           </button>
         </div>
 
         {showJsonFields && (
           <div className="space-y-3 pt-2 border-t border-[var(--border-subtle)]">
             <div className="space-y-1">
-              <label htmlFor="scope-json" className="text-[11px] font-medium text-[var(--text-secondary)] font-mono block">
-                Scope (JSON)
+              <label htmlFor="scope-json" className="text-[11px] font-medium text-[var(--text-secondary)] block">
+                Scope (Advanced)
               </label>
               <textarea
                 id="scope-json"
@@ -251,8 +252,8 @@ export function RegisterAuthorityModal({
               />
             </div>
             <div className="space-y-1">
-              <label htmlFor="meta-auth-json" className="text-[11px] font-medium text-[var(--text-secondary)] font-mono block">
-                Metadata (JSON)
+              <label htmlFor="meta-auth-json" className="text-[11px] font-medium text-[var(--text-secondary)] block">
+                Metadata (Advanced)
               </label>
               <textarea
                 id="meta-auth-json"

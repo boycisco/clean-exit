@@ -5,7 +5,7 @@ import type { Agent, AuditEvent } from '../../types/api.ts';
 import { EmptyState } from '../../components/common/EmptyState.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { StatusBadge } from '../../components/common/StatusBadge.tsx';
-import { formatDateTime } from '../../lib/format.ts';
+import { formatDateTime, formatAuditAction, formatTargetType } from '../../lib/format.ts';
 
 interface OverviewDashboardProps {
   onSelectAgent: (agentId: string) => void;
@@ -80,7 +80,7 @@ export function OverviewDashboard({
             Overview
           </h1>
           <p className="text-[13px] text-[var(--text-secondary)] mt-0.5">
-            Monitor agent authority and termination status.
+            Monitor agent permissions and termination status.
           </p>
         </div>
 
@@ -118,7 +118,7 @@ export function OverviewDashboard({
         <EmptyState
           icon={ShieldCheck}
           title="No agents registered"
-          description="Register a NEAR agent to inspect its authority and manage termination."
+          description="Register a NEAR agent to inspect its permissions and manage termination."
           action={
             <button
               type="button"
@@ -197,7 +197,7 @@ export function OverviewDashboard({
                       </div>
                       <p className="text-[12px] text-[var(--text-secondary)]">
                         {agent.status === 'partial'
-                          ? 'Termination completed with unresolved authorities or obligations.'
+                          ? 'Termination completed with unresolved permissions or obligations.'
                           : 'Termination failed to establish a verified outcome; operator review required.'}
                       </p>
                     </div>
@@ -254,7 +254,7 @@ export function OverviewDashboard({
                       <div className="space-y-0.5">
                         <div className="flex items-center gap-2">
                           <span className="font-mono text-[12px] font-semibold text-[var(--text-primary)]">
-                            {event.action}
+                            {formatAuditAction(event.action)}
                           </span>
                           <span className="text-[var(--text-muted)]">·</span>
                           <span className="text-[12px] text-[var(--text-secondary)]">
@@ -270,7 +270,7 @@ export function OverviewDashboard({
                       </div>
 
                       <span className="font-mono text-[11px] text-[var(--text-muted)] bg-[var(--bg-input)] px-2 py-0.5 rounded-[var(--radius-sm)] border border-[var(--border-subtle)]">
-                        {event.target_type}
+                        {formatTargetType(event.target_type)}
                       </span>
                     </div>
                   );

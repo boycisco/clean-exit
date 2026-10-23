@@ -58,7 +58,7 @@ export function RegisterAgentModal({
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="Register agent"
+      title="Register Agent"
       maxWidth="register"
       footer={
         <>
@@ -75,7 +75,7 @@ export function RegisterAgentModal({
             disabled={isSubmitting}
             className="btn-primary"
           >
-            {isSubmitting ? 'Registering...' : 'Register agent'}
+            {isSubmitting ? 'Registering...' : 'Register Agent'}
           </button>
         </>
       }
@@ -85,7 +85,7 @@ export function RegisterAgentModal({
 
         <div className="space-y-1">
           <label htmlFor="agent-name" className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider block">
-            Agent name <span className="text-[var(--status-danger)]">*</span>
+            Agent Name <span className="text-[var(--status-danger)]">*</span>
           </label>
           <input
             id="agent-name"
@@ -101,7 +101,7 @@ export function RegisterAgentModal({
 
         <div className="space-y-1">
           <label htmlFor="near-account" className="text-[11px] font-medium text-[var(--text-secondary)] uppercase tracking-wider block">
-            NEAR account
+            NEAR Account
           </label>
           <input
             id="near-account"
@@ -112,7 +112,7 @@ export function RegisterAgentModal({
             className="w-full h-10 px-3 rounded-[6px] bg-[var(--bg-input)] border border-[var(--border-default)] text-[13px] font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--focus-ring)] transition-colors"
           />
           <p className="text-[11px] text-[var(--text-muted)]">
-            Optional. Account ID cannot be changed after registration.
+            Optional. This account ID cannot be changed after creation.
           </p>
         </div>
 

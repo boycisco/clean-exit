@@ -17,7 +17,6 @@ function MainApp() {
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isRegisterAgentModalOpen, setIsRegisterAgentModalOpen] = useState(false);
 
-  // If unauthenticated or token not provided, render ConnectionScreen
   if (!isConnected) {
     return (
       <ConnectionScreen
@@ -47,7 +46,6 @@ function MainApp() {
       case 'agent-detail':
         return 'Agent workspace';
       case 'settings':
-      case 'connection':
         return 'Settings';
       default:
         return 'Clean Exit';
@@ -56,7 +54,6 @@ function MainApp() {
 
   return (
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] flex">
-      {/* 1. Sidebar (Fixed 232px width on desktop) */}
       <Sidebar
         currentView={currentView}
         onNavigate={(view) => {
@@ -66,15 +63,12 @@ function MainApp() {
         onCloseMobile={() => setIsMobileNavOpen(false)}
       />
 
-      {/* 2. Main Workspace (Fluid area) */}
       <div className="flex-1 flex flex-col min-w-0 lg:pl-[var(--sidebar-width)]">
-        {/* Top bar (Fixed 60px height) */}
         <Header
           onOpenMobileNav={() => setIsMobileNavOpen(true)}
           titleOrBreadcrumb={getHeaderTitle()}
         />
 
-        {/* Main Content (Horizontal padding 32px desktop, top 28px, bottom 40px) */}
         <main className="flex-1 px-4 sm:px-8 pt-7 pb-10 overflow-y-auto">
           {currentView === 'overview' && (
             <OverviewDashboard
@@ -98,13 +92,12 @@ function MainApp() {
             />
           )}
 
-          {(currentView === 'settings' || currentView === 'connection') && (
+          {currentView === 'settings' && (
             <SettingsView />
           )}
         </main>
       </div>
 
-      {/* Register Agent Dialog */}
       <RegisterAgentModal
         isOpen={isRegisterAgentModalOpen}
         onClose={() => setIsRegisterAgentModalOpen(false)}

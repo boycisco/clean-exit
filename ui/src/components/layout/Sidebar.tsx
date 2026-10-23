@@ -3,7 +3,6 @@ import {
   LayoutDashboard,
   ShieldCheck,
   Settings,
-  Plug,
   X,
 } from 'lucide-react';
 
@@ -11,8 +10,7 @@ export type AppView =
   | 'overview'
   | 'agents'
   | 'agent-detail'
-  | 'settings'
-  | 'connection';
+  | 'settings';
 
 interface SidebarProps {
   currentView: AppView;
@@ -46,11 +44,6 @@ export function Sidebar({
       id: 'settings' as AppView,
       label: 'Settings',
       icon: Settings,
-    },
-    {
-      id: 'connection' as AppView,
-      label: 'API connection',
-      icon: Plug,
     },
   ];
 
@@ -130,7 +123,7 @@ export function Sidebar({
           </nav>
         </div>
 
-        {/* Bottom Nav Items: Settings and API Connection */}
+        {/* Bottom Nav Items */}
         <div className="pt-4 border-t border-[var(--border-subtle)] space-y-1">
           {bottomNavItems.map((item) => {
             const Icon = item.icon;

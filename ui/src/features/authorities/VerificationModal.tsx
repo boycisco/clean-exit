@@ -14,7 +14,7 @@ import { TriStateBadge } from '../../components/common/TriStateBadge.tsx';
 import { StatusBadge } from '../../components/common/StatusBadge.tsx';
 import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { apiClient } from '../../lib/api-client.ts';
-import type { VerifyResponse } from '../../types/api.ts';
+import type { VerifyResponse, AuthorityState } from '../../types/api.ts';
 import { formatDateTime, getAuthorityStateMeta } from '../../lib/format.ts';
 
 interface VerificationModalProps {
@@ -199,11 +199,11 @@ export function VerificationModal({
                         <div className="flex items-center gap-1.5">
                           <span>Transition:</span>
                           <span className="font-mono text-neutral-400">
-                            {getAuthorityStateMeta(v.previous_state).label}
+                            {getAuthorityStateMeta(v.previous_state as AuthorityState).label}
                           </span>
                           <ArrowRight size={10} className="text-neutral-600" />
                           <span className="font-mono font-medium text-emerald-400">
-                            {getAuthorityStateMeta(v.new_state).label}
+                            {getAuthorityStateMeta(v.new_state as AuthorityState).label}
                           </span>
                         </div>
                         <span className="text-neutral-600">·</span>

@@ -238,3 +238,54 @@ async def test_retry_cross_owner_404(client, agent_with_graph, session):
         headers={"Authorization": "Bearer ce_other_retry"},
     )
     assert r.status_code == 404
+
+
+async def test_skipped_not_implemented_results_in_partial(session):
+    """A child delegation is marked 'skipped/not_implemented' in phase_revoke.
+    Result must be PARTIAL — the delegation was not resolved."""
+    from termination import _classify_result
+    from models import TerminationAttempt
+    from schemas import ReceiptResult
+
+    attempt = TerminationAttempt(
+        job_id="j1", authority_id="a1", action="registry_revoke",
+        status="skipped", error={"code": "not_implemented"},
+    )
+    assert _classify_result([attempt], []) == ReceiptResult.PARTIAL
+
+
+async def test_skipped_authority_missing_results_in_partial(session):
+    """Skipped for a missing DB row — we cannot confirm resolution."""
+    from termination import _classify_result
+    from models import TerminationAttempt
+    from schemas import ReceiptResult
+
+    attempt = TerminationAttempt(
+        job_id="j1", authority_id="a1", action="revoke",
+        status="skipped", error={"code": "authority_missing"},
+    )
+    assert _classify_result([attempt], []) == ReceiptResult.PARTIAL
+
+
+async def test_only_resolved_attempts_results_in_clean(session):
+    """Revoked + already_absent = clean."""
+    from termination import _classify_result
+    from models import TerminationAttempt
+    from schemas import ReceiptResult
+
+    a1 = TerminationAttempt(
+        job_id="j1", authority_id="a1", action="revoke",
+        status="revoked", tx_hash="H",
+    )
+    a2 = TerminationAttempt(
+        job_id="j1", authority_id="a2", action="revoke",
+        status="already_absent",
+    )
+    assert _classify_result([a1, a2], []) == ReceiptResult.CLEAN
+
+
+async def test_no_attempts_and_no_manual_items_is_clean(session):
+    """Nothing in scope → clean."""
+    from termination import _classify_result
+    from schemas import ReceiptResult
+    assert _classify_result([], []) == ReceiptResult.CLEAN

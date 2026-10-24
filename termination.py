@@ -621,14 +621,26 @@ async def phase_verify(
 def _classify_result(
     attempts: list[TerminationAttempt], manual_items: list[dict]
 ) -> ReceiptResult:
-    failed = any(
+    # A "failed", "requires_manual_action", or "submitted_but_failed" attempt
+    # means the authority was not resolved.
+    if any(
         a.status in ("failed", "requires_manual_action", "submitted_but_failed")
         for a in attempts
-    )
-    if failed:
+    ):
         return ReceiptResult.PARTIAL
+
+    # Unresolved manual obligations (e.g. external credentials) mean the
+    # scope was not fully resolved.
     if manual_items:
         return ReceiptResult.PARTIAL
+
+    # A "skipped" attempt means the worker decided not to act — for example
+    # because the authority type is not implemented (child_delegation) or
+    # because the row disappeared. Either way, the authority was NOT
+    # resolved, so the result cannot be clean.
+    if any(a.status == "skipped" for a in attempts):
+        return ReceiptResult.PARTIAL
+
     return ReceiptResult.CLEAN
 
 

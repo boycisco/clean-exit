@@ -42,3 +42,43 @@ resulting `registry.wasm` is validated by `wasm-opt`.
 - Build: `cd contract/registry && cargo near build non-reproducible-wasm --no-abi`
 - Artifact: `contract/target/near/registry/registry.wasm` (~118 KB)
 - Network: testnet
+
+
+## Testnet deployment evidence
+
+**Network:** NEAR testnet (not mainnet)
+
+**Contract account:** `clean-exit-registry-587840.testnet`
+
+**Deploy transaction:** `DpKfKDJ7KTsyRMApDLx5vPtpqEJVBd2na2MFu745Kgkz`
+
+**Wasm SHA-256 (full):**
+`96c727a0d9704cb529bebe25041419ba81527ef39559476886b531294d007adc`
+
+**Wasm size:** 118,801 bytes
+
+### Verify the deployment yourself
+
+Confirm the contract is live and initialized:
+
+    near contract call-function as-read-only clean-exit-registry-587840.testnet count json-args '{}' network-config testnet now
+
+Expected: `1` (one receipt has been published)
+
+    near contract call-function as-read-only clean-exit-registry-587840.testnet owner json-args '{}' network-config testnet now
+
+Expected: `"clean-exit-registry-587840.testnet"` (the deployer is the sole publisher)
+
+Retrieve the published receipt by its UUID:
+
+    python -c "import httpx, base64, json; args = base64.b64encode(json.dumps({'receipt_id':'5956db00-975d-434e-8fd0-67b1be133324'}, separators=(',',':')).encode()).decode(); r = httpx.post('https://rpc.testnet.near.org', json={'jsonrpc':'2.0','id':'x','method':'query','params':{'request_type':'call_function','finality':'final','account_id':'clean-exit-registry-587840.testnet','method_name':'get','args_base64':args}}, timeout=30); print(bytes(r.json()['result']['result']).decode())"
+
+Expected: a JSON object with `"payload_hash":"ec8bb6d5c2c271a0f9fe78eeef5bbffcf4c676d77c98cfd92817aaea8666c0e9"`
+
+Explorer: https://explorer.testnet.near.org/transactions/DpKfKDJ7KTsyRMApDLx5vPtpqEJVBd2na2MFu745Kgkz
+
+### Scope of this evidence
+
+- The deploy transaction hash above was captured in the original deployment output and matches the live on-chain state.
+- The Wasm SHA-256 was verified against the local build artifact at `contract/target/near/registry/registry.wasm`.
+- This is **testnet deployment evidence**, not a mainnet production deployment.

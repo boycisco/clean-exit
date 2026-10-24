@@ -13,6 +13,7 @@ import {
   Clock,
   Radio,
   FileCode,
+  Upload,
 } from 'lucide-react';
 import { apiClient } from '../../lib/api-client.ts';
 import { useConnection } from '../../context/ConnectionContext.tsx';
@@ -33,6 +34,7 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
   const [verifyResult, setVerifyResult] = useState<ReceiptVerifyResponse | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isVerifying, setIsVerifying] = useState(false);
+  const [isPublishing, setIsPublishing] = useState(false);
   const [error, setError] = useState<unknown | null>(null);
   const [copiedHash, setCopiedHash] = useState(false);
 
@@ -73,6 +75,23 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
     }
   };
 
+  const handlePublish = async () => {
+    if (!receipt) return;
+    setIsPublishing(true);
+    setError(null);
+    try {
+      await apiClient.publishReceipt(receipt.id);
+      // Refresh the receipt to show the new "published" status
+      await fetchReceipt();
+      // Clear any previous verification result since the state changed
+      setVerifyResult(null);
+    } catch (err: unknown) {
+      setError(err);
+    } finally {
+      setIsPublishing(false);
+    }
+  };
+
   const copyHash = async (hash: string) => {
     try {
       await navigator.clipboard.writeText(hash);
@@ -107,15 +126,28 @@ export function ReceiptViewer({ receiptId, agentId }: ReceiptViewerProps) {
         </div>
 
         {receipt && (
-          <button
-            type="button"
-            onClick={handleVerify}
-            disabled={isVerifying}
-            className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded transition-colors shadow-xs"
-          >
-            <ShieldCheck size={14} />
-            <span>{isVerifying ? 'Verifying...' : 'Verify Integrity'}</span>
-          </button>
+          <div className="flex items-center gap-2">
+            {receipt.verification_status === 'not_published' && (
+              <button
+                type="button"
+                onClick={handlePublish}
+                disabled={isPublishing}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-sky-600 hover:bg-sky-500 disabled:opacity-50 rounded transition-colors shadow-xs"
+              >
+                <Upload size={14} />
+                <span>{isPublishing ? 'Publishing...' : 'Publish to Blockchain'}</span>
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={handleVerify}
+              disabled={isVerifying}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 text-xs font-medium text-white bg-emerald-600 hover:bg-emerald-500 disabled:opacity-50 rounded transition-colors shadow-xs"
+            >
+              <ShieldCheck size={14} />
+              <span>{isVerifying ? 'Verifying...' : 'Verify Integrity'}</span>
+            </button>
+          </div>
         )}
       </div>
 

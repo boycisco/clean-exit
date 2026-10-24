@@ -331,6 +331,19 @@ export const apiClient = {
     }
   },
 
+  async publishReceipt(receiptId: string): Promise<{
+    receipt_id: string;
+    verification_status: string;
+    onchain_tx_hash: string | null;
+    published_at: string | null;
+    detail: string | null;
+    error: string | null;
+  }> {
+    return request(`/api/v1/receipts/${receiptId}/publish`, {
+      method: 'POST',
+    });
+  },
+
   async getAgentReceipt(agentId: string): Promise<Receipt | null> {
     try {
       return await request<Receipt>(`/api/v1/agents/${agentId}/receipt`, {

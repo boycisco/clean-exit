@@ -33,6 +33,7 @@ import { ErrorBanner } from '../../components/common/ErrorBanner.tsx';
 import { CodeSnippet } from '../../components/common/CodeSnippet.tsx';
 import { RegisterAuthorityModal } from '../authorities/RegisterAuthorityModal.tsx';
 import { ConfirmTerminationModal } from '../termination/ConfirmTerminationModal.tsx';
+import { ReceiptViewer } from '../receipts/ReceiptViewer.tsx';
 import {
   formatDateTime,
   getAuthorityTypeMeta,
@@ -47,7 +48,7 @@ interface AgentDetailsProps {
   onBack: () => void;
 }
 
-type TabType = 'overview' | 'authority' | 'termination' | 'activity';
+type TabType = 'overview' | 'authority' | 'termination' | 'receipt' | 'activity';
 
 export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
   const { capabilities } = useConnection();
@@ -348,6 +349,7 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
             { id: 'overview' as TabType, label: 'Overview' },
             { id: 'authority' as TabType, label: 'Authority' },
             { id: 'termination' as TabType, label: 'Termination' },
+            { id: 'receipt' as TabType, label: 'Receipt' },
             { id: 'activity' as TabType, label: 'Activity' },
           ].map((tab) => {
             const isActive = activeTab === tab.id;
@@ -783,8 +785,17 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
                     {activeJob.reason || 'All registered permissions in scope were evaluated.'}
                   </p>
                   {activeJob.receipt_id && (
-                    <div className="pt-1 text-[11px] font-mono text-[var(--text-primary)]">
-                      Receipt ID: {activeJob.receipt_id}
+                    <div className="pt-2 flex items-center justify-between border-t border-[var(--status-success)]/20 mt-2">
+                      <div className="text-[11px] font-mono text-[var(--text-primary)]">
+                        Receipt ID: {activeJob.receipt_id}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab('receipt')}
+                        className="flex items-center gap-1.5 px-3 py-1 text-xs font-medium text-emerald-950 bg-emerald-400 hover:bg-emerald-300 rounded transition-colors shadow-sm"
+                      >
+                        View Receipt
+                      </button>
                     </div>
                   )}
                 </div>
@@ -883,6 +894,11 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
             </div>
           )}
         </div>
+      )}
+
+      {/* TAB: RECEIPT */}
+      {activeTab === 'receipt' && (
+        <ReceiptViewer agentId={agent.id} />
       )}
 
       {/* TAB: ACTIVITY */}

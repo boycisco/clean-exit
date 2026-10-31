@@ -19,6 +19,7 @@ interface ConnectionContextValue {
   connect: (token: string, baseUrl?: string) => Promise<CapabilitiesResponse>;
   disconnect: () => void;
   refreshCapabilities: () => Promise<void>;
+  clearError: () => void;
 }
 
 const ConnectionContext = createContext<ConnectionContextValue | null>(null);
@@ -43,7 +44,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         setCapabilities(caps);
         return caps;
       } catch (err: unknown) {
-        let msg = 'Failed to fetch backend capabilities.';
+        let msg = 'Failed to connect to the backend.';
         if (err instanceof ApiError) {
           msg = err.message;
         } else if (err instanceof Error) {
@@ -95,6 +96,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
 
   const disconnect = () => {
     clearApiSession();
+    setToken(null);
     setCapabilities(null);
     setCapabilitiesError(null);
   };
@@ -103,6 +105,11 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
     if (token) {
       await fetchCapabilities(baseUrl, token);
     }
+  };
+
+  // <-- THIS WAS MISSING. It's what ConnectionScreen calls.
+  const clearError = () => {
+    setCapabilitiesError(null);
   };
 
   const isConnected = Boolean(token && capabilities && !capabilitiesError);
@@ -119,6 +126,7 @@ export function ConnectionProvider({ children }: { children: React.ReactNode }) 
         connect,
         disconnect,
         refreshCapabilities,
+        clearError,
       }}
     >
       {children}

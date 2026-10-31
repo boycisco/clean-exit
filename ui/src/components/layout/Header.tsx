@@ -1,13 +1,13 @@
 import React from 'react';
-import { Menu } from 'lucide-react';
+import { Menu, ChevronRight } from 'lucide-react';
 import { useConnection } from '../../context/ConnectionContext.tsx';
 
 interface HeaderProps {
   onOpenMobileNav: () => void;
-  titleOrBreadcrumb?: React.ReactNode;
+  breadcrumb: string;
 }
 
-export function Header({ onOpenMobileNav, titleOrBreadcrumb }: HeaderProps) {
+export function Header({ onOpenMobileNav, breadcrumb }: HeaderProps) {
   const { isConnected, capabilities } = useConnection();
 
   const networkName = capabilities?.network
@@ -19,7 +19,7 @@ export function Header({ onOpenMobileNav, titleOrBreadcrumb }: HeaderProps) {
       style={{ height: 'var(--topbar-height)' }}
       className="sticky top-0 z-30 flex items-center justify-between px-4 sm:px-8 bg-[var(--bg-app)] border-b border-[var(--border-subtle)] shrink-0"
     >
-      {/* Left side: Page title or compact breadcrumb */}
+      {/* Left side: Mobile menu + Breadcrumb */}
       <div className="flex items-center gap-3 min-w-0">
         <button
           type="button"
@@ -30,8 +30,11 @@ export function Header({ onOpenMobileNav, titleOrBreadcrumb }: HeaderProps) {
           <Menu size={18} />
         </button>
 
-        <div className="truncate text-[15px] font-semibold text-[var(--text-primary)]">
-          {titleOrBreadcrumb || 'Overview'}
+        {/* The Breadcrumb */}
+        <div className="hidden lg:flex items-center gap-2 text-[13px]">
+          <span className="text-[var(--text-muted)]">Workspace</span>
+          <ChevronRight size={14} className="text-[var(--text-muted)] opacity-50" />
+          <span className="font-medium text-[var(--text-primary)]">{breadcrumb}</span>
         </div>
       </div>
 

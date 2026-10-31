@@ -241,6 +241,11 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
   const envLabel =
     agent.environment.charAt(0).toUpperCase() + agent.environment.slice(1);
   const totalAuthCount = flatAuthorities.length;
+  const isTerminal = agent.status === 'clean' || agent.status === 'failed';
+  const hasActionableAuthorities = flatAuthorities.some(
+    (a) => a.state === 'active' || a.state === 'unverified'
+  );
+  const cannotTerminate = !signerReady || isTerminal || !hasActionableAuthorities;
 
   return (
     <div className="space-y-6 max-w-[var(--content-max-width)]">
@@ -299,13 +304,17 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
             <button
               type="button"
               onClick={() => setIsConfirmTerminationOpen(true)}
-              disabled={!signerReady}
+              disabled={cannotTerminate}
               title={
                 !signerReady
                   ? `Signer unavailable: ${capabilities?.signer_reason || 'Backend key not configured'}`
+                  : isTerminal
+                  ? `Agent is already ${agent.status}`
+                  : !hasActionableAuthorities
+                  ? 'No active permissions to terminate'
                   : 'Terminate agent permissions'
               }
-              className="btn-danger"
+              className="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <PowerOff size={13} />
               <span>Terminate agent</span>
@@ -819,8 +828,17 @@ export function AgentDetails({ agentId, onBack }: AgentDetailsProps) {
                 <button
                   type="button"
                   onClick={() => setIsConfirmTerminationOpen(true)}
-                  disabled={!signerReady}
-                  className="btn-danger"
+                  disabled={cannotTerminate}
+                  title={
+                    !signerReady
+                      ? `Signer unavailable`
+                      : isTerminal
+                      ? `Agent is already ${agent.status}`
+                      : !hasActionableAuthorities
+                      ? 'No active permissions to terminate'
+                      : 'Terminate agent permissions'
+                  }
+                  className="btn-danger disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <PowerOff size={13} />
                   <span>Terminate agent</span>

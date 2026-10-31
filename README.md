@@ -2,157 +2,204 @@
 
 **Agent authority termination and verification infrastructure on NEAR.**
 
-## The Problem
+Clean Exit helps developers revoke supported permissions granted to AI agents and produce independently verifiable evidence of what happened.
 
-When an AI agent finishes a task, its permissions often outlive it. API keys, NEAR function-call access keys, token allowances, scheduled jobs, and delegated authorities can remain active after the agent is “stopped.” Existing shutdown mechanisms do not provide a unified, independently verifiable record of what was revoked, what remains active, and what could not be cleaned up.
+Stopping an AI agent does not necessarily revoke its permissions. NEAR function-call access keys and other credentials may remain active after the agent stops running.
 
-Clean Exit addresses this by providing:
+Clean Exit provides a structured authority registry, a durable termination workflow, real NEAR access-key revocation, and cryptographic receipts committed to a NEAR smart contract.
 
-- A **structured authority registry** for agents and the permissions they hold.
-- A **termination workflow** that inspects, plans, and executes revocations against supported on-chain permissions.
-- **Durable, resumable jobs** that survive crashes and retries.
-- **Independently verifiable receipts** whose canonical SHA-256 hashes are published to a NEAR smart contract.
+## Project at a glance
 
-## What Clean Exit Does — and Doesn't Do
+| Property | Value |
+|---|---|
+| Project | Clean Exit |
+| Category | AI Agent Security and Authority Management |
+| Blockchain | NEAR |
+| Tested network | NEAR testnet |
+| Backend | Python, FastAPI, SQLAlchemy |
+| Frontend | React, Vite, TypeScript, Tailwind CSS |
+| Smart contract | Rust, near-sdk |
+| SDK and CLI | Python |
+| Automated revocation | NEAR function-call access keys |
+| Receipt integrity | Canonical JSON + SHA-256 |
+| On-chain registry | `clean-exit-registry-587840.testnet` |
+| License | MIT |
 
-### Clean Exit does
+## The problem
 
-- Register AI agents tied to a NEAR account on testnet or mainnet.
-- Track registered authorities as a directed graph, with cycle detection and orphan reporting.
-- **Delete real NEAR function-call access keys** via signed, Borsh-serialized transactions. This has been verified on testnet; see [On-Chain Evidence](#on-chain-evidence-testnet).
-- Run a durable termination worker with eight phases, retries, and stale-lock recovery.
-- Perform per-key post-revocation verification by re-querying the account.
-- Generate a canonical SHA-256 receipt payload with deterministic serialization.
-- Publish the receipt hash to the deployed registry contract.
-- Verify that the on-chain hash matches a locally recomputed hash.
-- Provide a React frontend, a Python SDK, and a CLI.
+AI agents often receive permissions to perform tasks: access keys, API credentials, delegated capabilities, and other forms of authority.
 
-### Clean Exit does not claim
+When an agent is stopped, those permissions do not necessarily disappear.
 
-- **Universal permission discovery.** The registry only knows about authorities that an operator registered or that the verification endpoint confirmed on chain. It does not discover external API keys, third-party credentials, or off-chain allowances.
-- **Complete revocation of every permission.** Only `near_function_key` authorities are automatically revocable by the shipped code. Child delegations, scheduled jobs, external credentials, and obligations are reported but not automatically resolved.
-- **Automatic obligation resolution.** `phase_resolve_obligations` collects unresolved obligations into `manual_items`; it does not settle or cancel them.
-- **Job-level final reconciliation.** Per-attempt verification happens after each revocation. There is no separate final verification pass after `phase_verify`; the classification logic determines the final outcome.
-- **Mainnet readiness.** All verification and publication evidence is testnet-only. Mainnet signing is disabled unless `APP_ENV=production`.
-- **Production hardening.** There is no rate limiting, no admin API for token revocation (revocation is database-only), and PostgreSQL compatibility is claimed but untested.
+This creates a security gap between terminating an agent's execution and revoking the authority it was granted.
 
-## Architecture
+Clean Exit addresses that gap by making agent termination an explicit, inspectable, and verifiable process.
 
-```mermaid
-flowchart TB
-    UI[React frontend<br/>Vite + TypeScript] --> API[FastAPI REST API<br/>/api/v1]
-    API --> DB[(SQLite / PostgreSQL<br/>SQLAlchemy)]
-    API --> WORKER[Durable worker<br/>8 phases]
-    WORKER --> RPC[NEAR RPC<br/>testnet]
-    WORKER --> CANON[Receipt canonicalizer<br/>SHA-256]
-    CANON --> CONTRACT[Rust receipt registry<br/>NEAR smart contract]
-    SDK[Python SDK and CLI] --> API
-```
+Instead of simply reporting that an agent has stopped, Clean Exit records:
 
-- **FastAPI backend** — REST API under `/api/v1`, Bearer-token authentication, owner isolation, and capability discovery.
-- **Database and migrations** — SQLAlchemy 2.x with Alembic; SQLite for local development and a PostgreSQL-compatible schema (PostgreSQL itself is not tested).
-- **Durable worker** — Claims pending jobs, drives eight phases, retries transient failures, and recovers stale locks.
-- **NEAR transaction layer** — Borsh serialization, Ed25519 signing, `broadcast_tx_commit` submission, and post-check verification.
-- **Rust receipt registry** — Append-only `LookupMap` of receipt commitments, owner-gated `publish`, and a `verify` view function.
-- **React frontend** — Vite, TypeScript, and Tailwind; typed API integration against the OpenAPI schema.
-- **Python SDK and CLI** — Thin client over the REST API, with a polling helper and JSON output.
+- Which authorities were registered.
+- Which permissions can be handled automatically.
+- Which revocation operations were attempted.
+- Which operations succeeded or failed.
+- Which permissions remain unresolved.
+- What evidence was generated and committed on-chain.
 
-## Repository Structure
+## What Clean Exit does
+
+### 1. Agent and authority registry
+
+Register agents associated with NEAR accounts and attach known authorities to them.
+
+Authorities form a directed graph, allowing Clean Exit to represent parent-child relationships, detect cycles, and identify orphaned entries.
+
+### 2. Real NEAR access-key revocation
+
+Clean Exit can delete supported NEAR function-call access keys through signed transactions.
+
+The backend constructs and submits NEAR transactions using Borsh serialization and Ed25519 signing.
+
+After a deletion, it queries the account again to confirm whether the key is absent.
+
+A submitted transaction is not automatically considered a successful revocation. The result must be checked.
+
+### 3. Durable termination worker
+
+Termination runs asynchronously through a background worker.
+
+The workflow has eight phases:
 
 ```text
-.
-├── app.py                 # FastAPI app and lifespan (bootstrap owner, worker)
-├── config.py              # Environment settings
-├── database.py            # Async engine, sessions, WAL pragma
-├── models.py              # SQLAlchemy models
-├── schemas.py             # Pydantic schemas
-├── auth.py                # Bearer token and ownership dependencies
-├── agents.py              # Agent endpoints
-├── authority.py           # Authority endpoints, revocation, verification
-├── termination.py         # Planner, job endpoints, eight-phase engine
-├── near.py                # NEAR JSON-RPC client, Borsh, transaction construction
-├── signer.py              # Ed25519 key loading and signing
-├── receipts.py            # Canonical payload, publication, verification
-├── jobs.py                # Worker loop, job claiming, recovery
-├── audit.py               # Append-only audit events
-├── errors.py              # Unified error envelope
-├── probe.py               # Read-only NEAR testnet connectivity check
-├── tests/                 # pytest suites
-├── migrations/            # Alembic migrations
-├── contract/
-│   └── registry/          # Rust receipt registry contract
-│       ├── src/lib.rs
-│       └── tests/integration.rs
-├── docs/
-│   ├── api.md              # API contract
-│   └── deploy.md           # Testnet deployment notes
-├── sdk/
-│   ├── client.py           # Python SDK
-│   └── cli.py              # Command-line interface
-├── ui/                     # React frontend
-├── pyproject.toml
-├── .env.example
-└── README.md
+Validate
+   ↓
+Inventory
+   ↓
+Plan
+   ↓
+Revoke
+   ↓
+Resolve Obligations
+   ↓
+Verify
+   ↓
+Finalize
+   ↓
+Complete
 ```
 
-## Setup
+Jobs are persisted in the database. The worker supports retries, idempotency, heartbeat tracking, and stale-lock recovery.
+
+Per-key post-revocation verification occurs during the revocation operation. The separate `verify` phase does not perform an additional job-level reconciliation.
+
+### 4. Cryptographic receipts
+
+After termination, Clean Exit generates a canonical JSON receipt payload and calculates its SHA-256 hash.
+
+The hash can be published to the deployed NEAR receipt registry.
+
+The verification process recomputes the payload hash and compares it with the commitment stored on-chain.
+
+This allows an independent observer to check whether the receipt payload matches the recorded commitment.
+
+Importantly, verifying a receipt's hash proves payload integrity. It does not independently establish that every real-world permission has been revoked.
+
+### 5. Developer tools
+
+Clean Exit includes:
+
+- A React frontend for managing agents and inspecting termination workflows.
+- A Python SDK for programmatic access.
+- A command-line interface with JSON output.
+- A FastAPI REST API documented through OpenAPI.
+
+## How NEAR fits into Clean Exit
+
+NEAR is used for two distinct operations.
+
+**Permission revocation:** The backend submits signed NEAR transactions to delete supported function-call access keys from an account.
+
+**Receipt verification:** A Rust smart contract stores receipt commitments. Its view methods allow anyone to retrieve and compare the recorded hashes.
+
+The contract is not a general permission manager. Actual access-key deletion happens through NEAR account transactions. The contract provides an independently inspectable record of receipt commitments.
+
+## Try Clean Exit locally
+
+The current project provides a local testing environment. It is not a hosted public demo.
 
 ### Prerequisites
 
-- **Python 3.12 or later**
-- **Node.js 18 or later** for the frontend
-- **Rust** only if you need to rebuild or test the contract
+- Python 3.12 or later.
+- Node.js 18 or later.
+- Rust and Cargo, if running contract tests or rebuilding the contract.
+- A NEAR testnet account.
+- A testnet full-access signing key authorized to manage the account's access keys.
 
-### Backend
+For a real revocation, use a disposable testnet account and a separate restricted function-call key. Never target the full-access key used by the backend signer.
 
-From the repository root, create and activate a virtual environment, then install the project dependencies.
+### 1. Clone the repository
 
 ```bash
+git clone https://github.com/boycisco/clean.git
+cd clean-exit
+```
+
+Replace the repository URL with the actual public repository address.
+
+### 2. Configure the backend
+
+Create a virtual environment and install the dependencies.
+
+**Windows PowerShell:**
+
+```powershell
 python -m venv venv
-```
-
-Windows PowerShell:
-
-```powershell
 .\venv\Scripts\Activate.ps1
-```
-
-macOS/Linux:
-
-```bash
-source venv/bin/activate
-```
-
-Install dependencies and create your local environment file:
-
-```bash
+python -m pip install --upgrade pip
 pip install -e ".[dev]"
-```
-
-Windows PowerShell:
-
-```powershell
 Copy-Item .env.example .env
 ```
 
-macOS/Linux:
+**Linux / macOS:**
 
 ```bash
+python3.12 -m venv venv
+source venv/bin/activate
+python -m pip install --upgrade pip
+pip install -e ".[dev]"
 cp .env.example .env
 ```
 
-Edit `.env` with the settings required for your setup. Then run the database migrations and start the API:
+Edit `.env` and configure the required settings.
+
+Apply database migrations:
 
 ```bash
 alembic upgrade head
+```
+
+Start the backend:
+
+```bash
 uvicorn app:app --reload
 ```
 
-The `/health` endpoint confirms the API is running. `/api/v1/capabilities` reports which operations are enabled, including whether a signer and receipt publisher are configured.
+The API should be available at:
 
-### Frontend
+```text
+http://127.0.0.1:8000
+```
 
-In a separate terminal, from the repository root:
+Check that it is running:
+
+```text
+GET /health
+GET /api/v1/capabilities
+```
+
+The capabilities endpoint reports which operations are enabled, including signer and receipt publisher availability.
+
+### 3. Start the frontend
+
+Open another terminal:
 
 ```bash
 cd ui
@@ -160,107 +207,336 @@ npm install
 npm run dev
 ```
 
-Open the local URL printed by Vite. The connection screen asks for the backend URL (default `http://127.0.0.1:8000`) and a `ce_` API token.
+Open the local URL printed by Vite.
 
-### Environment
+The connection screen accepts:
 
-Refer to `.env.example`. Important variables include:
+- **Server address:** `http://127.0.0.1:8000`
+- **Access token:** the configured `BOOTSTRAP_TOKEN` from your local `.env`, when using the bootstrap authentication flow.
 
-- `DATABASE_URL` — SQLite by default: `sqlite+aiosqlite:///./clean.db`.
-- `NEAR_NETWORK` — `testnet` or `mainnet`.
-- `NEAR_SIGNER_ACCOUNT` and `NEAR_SIGNER_KEY_PATH` — configure these to enable revocation; leave them blank for read-only mode.
-- `RECEIPT_CONTRACT`, `RECEIPT_PUBLISHER_ACCOUNT`, and `RECEIPT_PUBLISHER_KEY_PATH` — configure these to enable receipt publication.
-- `BOOTSTRAP_TOKEN` — the initial API token, used during first startup.
+Use a unique local development token. Never deploy the example development token or publish credentials.
 
-**Never commit `.env` or store private keys in the repository.**
+### 4. Configure NEAR testnet access
 
-## Tests
+The backend needs an authorized signer to execute real key revocations.
 
-Run commands from the indicated working directory.
+Important environment variables:
+
+| Variable | Purpose |
+|---|---|
+| `NEAR_NETWORK` | Selects `testnet` or `mainnet` |
+| `NEAR_SIGNER_ACCOUNT` | NEAR account authorized to sign revocation transactions |
+| `NEAR_SIGNER_KEY_PATH` | Server-side signing key path |
+| `RECEIPT_CONTRACT` | Deployed receipt registry account |
+| `RECEIPT_PUBLISHER_ACCOUNT` | Account authorized to publish receipt commitments |
+| `RECEIPT_PUBLISHER_KEY_PATH` | Publisher signing key path |
+| `BOOTSTRAP_TOKEN` | Initial API authentication token |
+
+The signing account and receipt publisher require their own appropriate permissions.
+
+For the test workflow, ensure that the target function-call key belongs to the account being managed and is not the signer's own access key.
+
+Receipt publication requires the contract and publisher configuration. Read-only verification of previously published receipts does not require the publisher signing key.
+
+Keep all private keys outside the repository.
+
+## Perform a real termination
+
+Once the backend, worker, and frontend are configured, use a disposable NEAR testnet account.
+
+### Expected workflow
+
+| Step | Action | Expected result |
+|---|---|---|
+| 1 | Register an agent | Agent appears in the dashboard |
+| 2 | Add a NEAR function-call key | Authority appears in the inventory |
+| 3 | Verify authority | Backend confirms the key exists on-chain |
+| 4 | Inspect termination plan | Supported and unsupported actions are identified |
+| 5 | Terminate the agent | A durable termination job is created |
+| 6 | Observe job execution | Worker processes the termination phases |
+| 7 | Verify revocation | The target key is confirmed absent |
+| 8 | Inspect receipt | Canonical receipt payload and hash are available |
+| 9 | Publish receipt | Hash commitment is submitted to the registry |
+| 10 | Verify integrity | On-chain commitment matches the recomputed receipt hash |
+
+A `202 Accepted` response means the termination job was created. It does not mean termination succeeded.
+
+The final outcome is determined by the receipt result:
+
+- `clean`: all registered authorities within the termination scope were resolved.
+- `partial`: one or more authorities remain unresolved, unsupported, skipped, or failed.
+- `failed`: a trustworthy outcome could not be established.
+
+A successful worker job is not necessarily a clean termination.
+
+## What Clean Exit does not claim
+
+Security infrastructure must be precise about its guarantees.
+
+**No universal permission discovery.**
+
+Clean Exit does not automatically discover every permission an agent has. Operators register known authorities, and supported verification operations can confirm their state on-chain.
+
+An empty authority inventory does not mean an agent has no permissions.
+
+**No complete revocation of every permission.**
+
+Automated revocation is currently limited to `near_function_key` authorities.
+
+Other registered authority types, including scheduled jobs, external credentials, obligations, and child delegations, are reported but are not automatically resolved by the current implementation.
+
+**No automatic obligation resolution.**
+
+The obligation phase collects unresolved items for manual action. It does not settle, cancel, or resolve obligations automatically.
+
+**No separate job-level final reconciliation.**
+
+Post-revocation verification occurs per attempt. There is no additional reconciliation pass between revocation and finalization.
+
+Skipped, failed, and unresolved attempts prevent a clean result.
+
+**No mainnet deployment.**
+
+The deployed registry and verified transaction evidence are on NEAR testnet. Mainnet readiness has not been established.
+
+**No production-hardening claim.**
+
+Rate limiting is not implemented in the current deployment. Token revocation is database-only, and PostgreSQL compatibility has not been exercised by the test suite.
+
+## On-chain evidence
+
+The receipt registry has been deployed to NEAR testnet.
+
+| Property | Verified value |
+|---|---|
+| Network | NEAR testnet |
+| Contract account | `clean-exit-registry-587840.testnet` |
+| Deployment transaction | `DpKfKDJ7KTsyRMApDLx5vPtpqEJVBd2na2MFu745Kgkz` |
+| Published receipt transaction | `J7Ukfj5vdaoXa4siT8RznHSJPRFYJgkv3Top7ND13pb3` |
+| Wasm SHA-256 | `96c727a0d9704cb529bebe25041419ba81527ef39559476886b531294d007adc` |
+| Wasm size | 118,801 bytes |
+| Published payload hash | `ec8bb6d5c2c271a0f9fe78eeef5bbffcf4c676d77c98cfd92817aaea8666c0e9` |
+
+These values are historical testnet evidence from the project's verification work.
+
+### Independently inspect the contract
+
+Install and configure the NEAR CLI, then run:
+
+```bash
+near contract call-function as-read-only clean-exit-registry-587840.testnet count json-args '{}' network-config testnet now
+```
+
+Expected result during the recorded verification: `1`.
+
+Inspect the contract owner:
+
+```bash
+near contract call-function as-read-only clean-exit-registry-587840.testnet owner json-args '{}' network-config testnet now
+```
+
+Expected result:
+
+```text
+clean-exit-registry-587840.testnet
+```
+
+The published receipt transaction and payload hash can also be inspected using NEAR testnet RPC and the contract's `get` view method.
+
+See [`docs/deploy.md`](docs/deploy.md) for deployment and verification details.
+
+### What the receipt proves
+
+There are three different claims:
+
+1. **Payload integrity:** the stored receipt produces the expected SHA-256 hash.
+2. **On-chain commitment:** the deployed contract contains that hash.
+3. **Revocation outcome:** the receipt describes what happened to the registered authorities.
+
+The first two can be checked cryptographically. They do not prove that every permission an agent possesses has been removed.
+
+## Testing
+
+Clean Exit separates offline application tests from live read-only network checks.
+
+Run commands from the repository root unless otherwise specified.
 
 ### Backend tests
 
-From the repository root:
-
 ```bash
-python -m pytest -v
+pytest -v
 ```
 
-### Live, read-only NEAR testnet tests
+The last recorded run completed with:
 
-From the repository root:
-
-```bash
-python -m pytest -m live -v
+```text
+185 passed, 4 deselected
 ```
 
-These tests query NEAR testnet. They do not perform destructive on-chain operations.
+This suite includes backend, authentication, termination, receipt, SDK, and CLI tests. Most external HTTP interactions are mocked.
 
-### Frontend checks
-
-From the repository root:
+### Live NEAR testnet tests
 
 ```bash
-cd ui
+pytest -m live -v
+```
+
+Last recorded result:
+
+```text
+4 passed, 185 deselected
+```
+
+These tests perform read-only queries against NEAR testnet. They do not execute destructive revocations or publish receipts.
+
+### Database migration check
+
+```bash
+alembic check
+```
+
+Last recorded result: no new upgrade operations detected.
+
+### Frontend
+
+From the `ui/` directory:
+
+```bash
 npm run lint
 npm run build
 ```
 
-### Contract tests
+Both commands passed in the last recorded validation.
 
-From the repository root:
+### Rust contract
+
+From `contract/registry/`:
 
 ```bash
-cd contract/registry
 cargo test --lib
 ```
 
-On Windows, contract test limitations and any required workaround are documented in `docs/deploy.md`.
+Last recorded result:
 
-## On-Chain Evidence (Testnet)
-
-| Field | Value |
-|---|---|
-| Network | NEAR **testnet** |
-| Contract account | `clean-exit-registry-587840.testnet` |
-| Deployment transaction | `DpKfKDJ7KTsyRMApDLx5vPtpqEJVBd2na2MFu745Kgkz` |
-| Wasm SHA-256 | `96c727a0d9704cb529bebe25041419ba81527ef39559476886b531294d007adc` |
-| Wasm size | 118,801 bytes |
-
-### Verify the contract
-
-Using the NEAR CLI version and syntax configured for your environment, query the contract's read-only methods:
-
-```bash
-near contract call-function as-read-only clean-exit-registry-587840.testnet count json-args '{}' network-config testnet now
-# Expected result: 1
-
-near contract call-function as-read-only clean-exit-registry-587840.testnet owner json-args '{}' network-config testnet now
-# Expected result: "clean-exit-registry-587840.testnet"
+```text
+7 passed, 0 failed
 ```
 
-See [`docs/deploy.md`](docs/deploy.md) for full verification instructions and details of the published receipt.
+On Windows, contract tests currently require the workaround documented in `docs/deploy.md`. Linux/macOS integration tests have not been run in the reported validation.
 
-**The distinction that matters:**
+### End-to-end scripts
 
-- The on-chain hash is a *commitment* to a specific payload.
-- Verifying the hash proves that the payload matches the commitment and has not changed relative to it.
-- It does **not** prove that all of the agent's real-world permissions have been removed. It proves only that the claims recorded in the payload match the on-chain commitment.
+The repository also includes scripts for exercising the SDK and CLI against a running backend.
 
-## Limitations
+These workflows can submit real testnet transactions. Use only disposable testnet accounts and function-call keys.
 
-- **Testnet only.** No mainnet deployment has been performed.
-- **The registry is not an exhaustive discovery system.** Only authorities registered through the API or confirmed by the verification endpoint are in scope.
-- **Automated revocation is limited.** Only `near_function_key` authorities are automatically revocable.
-- **Child delegations are not automatically resolved.** The engine marks `child_delegation` authorities as `skipped/not_implemented` and downgrades the result to `partial`.
-- **Obligations are reported, not resolved.** `phase_resolve_obligations` collects manual items into the receipt.
-- **Job-level verification is per-attempt, not per-job.** There is no additional reconciliation phase between `phase_revoke` and `phase_finalize`; `_classify_result` treats any `failed`, `requires_manual_action`, `submitted_but_failed`, or `skipped` attempt as `partial`.
-- **No rate limiting.** This is reported honestly by `/api/v1/capabilities`.
-- **Token revocation is database-only.** There is no public endpoint to revoke a token.
-- **PostgreSQL is claimed but untested.** SQLite is the only database exercised by the test suite.
-- **Windows contract tests** require the workaround documented in `docs/deploy.md`.
-- **No automated destructive live test.** Real on-chain revocation and receipt publication were performed manually during development. The on-chain evidence above can be independently re-checked.
+Python SDK:
+
+```bash
+python scripts/e2e_sdk.py "ed25519:YOUR_TEST_PUBLIC_KEY"
+```
+
+PowerShell CLI:
+
+```powershell
+.\scripts\e2e_cli.ps1 -TargetKey "ed25519:YOUR_TEST_PUBLIC_KEY"
+```
+
+Do not run these against mainnet or against a key you cannot safely revoke.
+
+### Test coverage boundaries
+
+The reported automated live tests are read-only. The real access-key revocation and receipt publication were performed manually during development and verified against testnet.
+
+There is no automated destructive live test in the current suite.
+
+PostgreSQL compatibility is also unverified; SQLite is the database exercised by the reported tests.
+
+## Architecture
+
+```mermaid
+flowchart TD
+    UI[React frontend] --> API[FastAPI REST API]
+    API <--> DB[(SQLAlchemy database)]
+    API --> JOB[Durable termination worker]
+    JOB --> NEAR[NEAR RPC and signed transactions]
+    JOB --> RECEIPT[Canonical receipt generation]
+    RECEIPT --> CONTRACT[Rust NEAR receipt registry]
+```
+
+| Component | Responsibility |
+|---|---|
+| FastAPI backend | REST API, authentication, ownership enforcement, capabilities |
+| SQLAlchemy + Alembic | Database models, persistence, and migrations |
+| Durable worker | Termination jobs, retries, stale-lock recovery |
+| NEAR transaction layer | Borsh serialization, Ed25519 signing, transaction submission, verification |
+| Rust registry contract | Append-only receipt commitment storage and verification |
+| React frontend | Agent management, authority inspection, termination workflow |
+| Python SDK | Typed API client and job polling |
+| Python CLI | Command-line operations and machine-readable JSON output |
+
+### Repository structure
+
+```text
+clean-exit/
+├── app.py
+├── config.py
+├── database.py
+├── models.py
+├── schemas.py
+├── auth.py
+├── agents.py
+├── authority.py
+├── termination.py
+├── near.py
+├── signer.py
+├── receipts.py
+├── jobs.py
+├── audit.py
+├── errors.py
+├── probe.py
+├── tests/
+├── migrations/
+├── contract/
+│   └── registry/
+│       ├── src/
+│       └── tests/
+├── docs/
+│   ├── api.md
+│   └── deploy.md
+├── sdk/
+│   ├── client.py
+│   └── cli.py
+├── ui/
+├── scripts/
+├── pyproject.toml
+├── .env.example
+├── LICENSE
+└── README.md
+```
+
+## Technical documentation
+
+- [`docs/api.md`](docs/api.md): API endpoints, authentication, request and response formats, state machines, and error behavior.
+- [`docs/deploy.md`](docs/deploy.md): NEAR testnet deployment and verification instructions.
+- [`sdk/client.py`](sdk/client.py): Python SDK implementation.
+- [`sdk/cli.py`](sdk/cli.py): CLI implementation.
+- `/docs`: Interactive FastAPI documentation when the backend is running.
+- `/openapi.json`: Generated OpenAPI schema.
+
+## Security
+
+- Owner isolation is enforced server-side.
+- API tokens are stored as SHA-256 hashes, not raw token values.
+- The backend prevents the signer from revoking the key it uses to authorize transactions.
+- RPC failures do not produce fabricated evidence that an authority is absent.
+- Unsupported and inconclusive results remain distinct from successful revocation.
+- Signing keys and environment secrets must remain outside version control.
+
+Never commit `.env` files, private keys, seed phrases, or credentials.
 
 ## License
 
-MIT License. See [LICENSE](./LICENSE) for the full text.
+Clean Exit is released under the MIT License.
+
+See [`LICENSE`](LICENSE).

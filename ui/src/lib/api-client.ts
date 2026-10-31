@@ -83,11 +83,13 @@ export async function request<T>(
       headers,
     });
   } catch (err: unknown) {
-    const errorMsg =
-      err instanceof Error ? err.message : 'Network connection failure';
+    // Log the actual technical error to the console for developers
+    console.error('Network Error:', err);
+    
+    // Throw a clean, human-readable error for the UI
     throw new ApiError(
-      'connection_failure',
-      `Unable to reach Clean Exit backend at ${baseUrl}. Ensure the server is running and accessible. (${errorMsg})`,
+      'network_error',
+      'Could not connect to the server. Please check your network and ensure the backend is running.',
       0
     );
   }
@@ -132,8 +134,8 @@ export async function request<T>(
     ) {
       const envelope = data as ApiErrorEnvelope;
       throw new ApiError(
-        envelope.error.code || 'unknown_error',
-        envelope.error.message || `Request failed with status ${response.status}`,
+        envelope.error.code || 'api_error',
+        envelope.error.message || 'An error occurred while processing your request.',
         response.status,
         envelope.error.details || {},
         envelope.error.request_id || requestId
@@ -141,8 +143,8 @@ export async function request<T>(
     }
 
     // FastAPI default detail object fallback: e.g. {"detail": "..."} or {"error": "..."}
-    let fallbackMsg = `Request failed with status ${response.status}`;
-    let fallbackCode = 'request_failed';
+    let fallbackMsg = 'An unexpected error occurred. Please try again.';
+    let fallbackCode = 'api_error';
 
     if (data && typeof data === 'object') {
       const record = data as Record<string, unknown>;
@@ -151,11 +153,12 @@ export async function request<T>(
       } else if (typeof record.error === 'string') {
         fallbackMsg = record.error;
       } else if (Array.isArray(record.detail)) {
-        fallbackMsg = 'Validation failed';
+        fallbackMsg = 'Please check your input and try again.';
         fallbackCode = 'validation_error';
       }
     }
 
+    // Assign friendly codes based on HTTP status
     if (response.status === 401) fallbackCode = 'unauthorized';
     else if (response.status === 404) fallbackCode = 'not_found';
     else if (response.status === 409) fallbackCode = 'conflict';
@@ -304,7 +307,7 @@ export const apiClient = {
     });
   },
 
-  // Receipts (Gracefully handles 404 for Priority 4c)
+  // Receipts
   async getReceipt(receiptId: string): Promise<Receipt | null> {
     try {
       return await request<Receipt>(`/api/v1/receipts/${receiptId}`, {

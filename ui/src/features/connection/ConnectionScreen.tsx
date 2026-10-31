@@ -8,7 +8,7 @@ interface ConnectionScreenProps {
 }
 
 export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
-  const { baseUrl: currentBaseUrl, connect, capabilitiesError } = useConnection();
+  const { baseUrl: currentBaseUrl, connect, capabilitiesError, clearError } = useConnection();
   const [baseUrlInput, setBaseUrlInput] = useState(currentBaseUrl || DEFAULT_API_BASE_URL);
   const [tokenInput, setTokenInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -17,6 +17,7 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLocalError(null);
+    clearError();
 
     const cleanToken = tokenInput.trim();
     const cleanUrl = baseUrlInput.trim().replace(/\/+$/, '');
@@ -47,7 +48,6 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
   return (
     <div className="min-h-screen bg-[var(--bg-app)] flex flex-col justify-center items-center px-4 py-12">
       <div className="w-full max-w-[480px] space-y-6">
-        {/* Brand Lockup */}
         <div className="space-y-2">
           <div className="flex items-center gap-2">
             <div className="w-5 h-5 rounded-[4px] bg-[var(--accent)] flex items-center justify-center shrink-0">
@@ -61,11 +61,10 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
             Connect to Clean Exit
           </h1>
           <p className="text-[13px] text-[var(--text-secondary)] leading-normal">
-            Enter your Clean Exit server details to continue.
+            Enter your server details to continue.
           </p>
         </div>
 
-        {/* Connection Form */}
         <div className="border border-[var(--border-subtle)] rounded-[var(--radius-lg)] bg-[var(--bg-surface)] p-6 space-y-5">
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-1">
@@ -81,9 +80,6 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
                 className="w-full h-10 px-3 rounded-[6px] bg-[var(--bg-input)] border border-[var(--border-default)] text-[13px] font-mono text-[var(--text-primary)] placeholder-[var(--text-muted)] focus:outline-none focus:border-[var(--focus-ring)] transition-colors"
                 required
               />
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Default local server: http://127.0.0.1:8000
-              </p>
             </div>
 
             <div className="space-y-1">
@@ -100,16 +96,16 @@ export function ConnectionScreen({ onConnected }: ConnectionScreenProps) {
                 required
                 autoComplete="off"
               />
-              <p className="text-[11px] text-[var(--text-muted)]">
-                Your token is kept securely in memory and never saved to disk.
-              </p>
             </div>
 
             {(localError || capabilitiesError) && (
               <ErrorBanner
                 error={localError || capabilitiesError}
                 title="Connection failed"
-                onDismiss={() => setLocalError(null)}
+                onDismiss={() => {
+                  setLocalError(null);
+                  clearError();
+                }}
               />
             )}
 

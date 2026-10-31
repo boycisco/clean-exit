@@ -11,6 +11,7 @@ import { RegisterAgentModal } from './features/agents/RegisterAgentModal.tsx';
 import type { Agent } from './types/api.ts';
 
 function MainApp() {
+  // REMOVED isDemo
   const { isConnected } = useConnection();
   const [currentView, setCurrentView] = useState<AppView>('overview');
   const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
@@ -37,23 +38,28 @@ function MainApp() {
     setCurrentView('agent-detail');
   };
 
-  const getHeaderTitle = () => {
+  // CHANGED to getBreadcrumb
+  const getBreadcrumb = () => {
     switch (currentView) {
       case 'overview':
         return 'Overview';
       case 'agents':
         return 'Agents';
       case 'agent-detail':
-        return 'Agent workspace';
+        return 'Agent Workspace';
       case 'settings':
         return 'Settings';
       default:
-        return 'Clean Exit';
+        return 'Overview';
     }
   };
 
   return (
+    // REMOVED isDemo padding
     <div className="min-h-screen bg-[var(--bg-app)] text-[var(--text-primary)] flex">
+      
+      {/* REMOVED the Demo Banner */}
+
       <Sidebar
         currentView={currentView}
         onNavigate={(view) => {
@@ -64,9 +70,10 @@ function MainApp() {
       />
 
       <div className="flex-1 flex flex-col min-w-0 lg:pl-[var(--sidebar-width)]">
+        {/* CHANGED to pass breadcrumb */}
         <Header
           onOpenMobileNav={() => setIsMobileNavOpen(true)}
-          titleOrBreadcrumb={getHeaderTitle()}
+          breadcrumb={getBreadcrumb()}
         />
 
         <main className="flex-1 px-4 sm:px-8 pt-7 pb-10 overflow-y-auto">

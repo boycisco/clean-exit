@@ -151,7 +151,7 @@ Create a virtual environment and install the dependencies.
 **Windows PowerShell:**
 
 ```powershell
-python -m venv venv
+py -m venv venv
 .\venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
 pip install -e ".[dev]"

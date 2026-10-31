@@ -3,7 +3,7 @@ name = "clean"
 version = "0.1.0"
 description = "Clean Exit — agent authority termination and verification on NEAR"
 requires-python = ">=3.12"
-license = { text = "MIT" }
+license = "MIT"
 
 dependencies = [
     "fastapi>=0.115",
@@ -39,3 +39,6 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py312"
+
+[tool.setuptools.packages.find]
+exclude = ["tests*", "migrations*", "contract*", "ui*", "scripts*"]

@@ -138,7 +138,7 @@ For a real revocation, use a disposable testnet account and a separate restricte
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/boycisco/clean.git
+git clone https://github.com/boycisco/clean-exit.git
 cd clean-exit
 ```
 

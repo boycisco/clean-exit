@@ -52,3 +52,5 @@ ui/.env
 ui/.env.local
 
 ui/*.log
+
+docs/Clean-Exit-Demo.mp3

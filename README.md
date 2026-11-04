@@ -8,6 +8,8 @@ Stopping an AI agent does not necessarily revoke its permissions. NEAR function-
 
 Clean Exit provides a structured authority registry, a durable termination workflow, real NEAR access-key revocation, and cryptographic receipts committed to a NEAR smart contract.
 
+[![Watch Demo on X](https://img.shields.io/badge/Watch-Demo_Video-black?logo=x)](https://x.com/l0rdWells/status/2118026646813094290)
+
 ## Project at a glance
 
 | Property | Value |
